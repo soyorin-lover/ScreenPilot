@@ -1,5 +1,6 @@
 #pragma once
 #include <QCapturableWindow>
+#include <QElapsedTimer>
 #include <QList>
 #include <QObject>
 #include <QPointer>
@@ -26,6 +27,8 @@ class RecordingController final : public QObject {
   Q_PROPERTY(QString outputDirectory READ outputDirectory WRITE
                  setOutputDirectory NOTIFY changed)
   Q_PROPERTY(QUrl lastRecording READ lastRecording NOTIFY changed)
+  Q_PROPERTY(
+      QVariantList lastPointerSamples READ lastPointerSamples NOTIFY changed)
   Q_PROPERTY(qint64 duration READ duration NOTIFY changed)
   Q_PROPERTY(bool microphoneEnabled READ microphoneEnabled WRITE
                  setMicrophoneEnabled NOTIFY changed)
@@ -42,6 +45,7 @@ public:
   QString error() const { return m_error; }
   QString outputDirectory() const { return m_directory; }
   QUrl lastRecording() const { return m_last; }
+  QVariantList lastPointerSamples() const { return m_lastPointerSamples; }
   qint64 duration() const { return m_duration; }
   bool microphoneEnabled() const { return m_microphone; }
   QObject *previewSink() const;
@@ -64,6 +68,8 @@ private:
     bool isScreen;
   };
   void createRecorder();
+  void beginPointerCapture();
+  void samplePointer();
   void fail(const QString &message);
   void finish();
   void stopCapture();
@@ -83,4 +89,9 @@ private:
   QVideoSink *m_sink;
   QPointer<QVideoSink> m_preview;
   QTimer *m_watchdog;
+  QTimer *m_pointerTimer;
+  QElapsedTimer m_pointerClock;
+  QVariantList m_pendingPointerSamples, m_lastPointerSamples;
+  bool m_leftButtonDown = false;
+  quintptr m_pointerWindow = 0;
 };

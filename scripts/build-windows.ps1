@@ -1,7 +1,8 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][string]$QtRoot,
     [string]$VisualStudioRoot,
     [switch]$Deploy,
+    [string]$DeploymentDirectory,
     [switch]$Launch
 )
 $ErrorActionPreference = 'Stop'
@@ -20,9 +21,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Configure failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
 $executable = Join-Path $buildDirectory 'ScreenPilot.exe'
 if ($Deploy) {
-    $portableDirectory = Join-Path $buildDirectory 'portable'
+    $portableDirectory = if ($DeploymentDirectory) { [System.IO.Path]::GetFullPath($DeploymentDirectory) } else { Join-Path $buildDirectory 'portable-playback' }
     New-Item -ItemType Directory -Force -Path $portableDirectory | Out-Null
     Copy-Item -LiteralPath $executable -Destination $portableDirectory
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'third_party\DogSC-LICENSE') -Destination (Join-Path $portableDirectory 'DogSC-LICENSE.txt')
     $executable = Join-Path $portableDirectory 'ScreenPilot.exe'
     & (Join-Path $QtRoot 'bin\windeployqt.exe') --release --no-translations --qmldir (Join-Path $projectRoot 'app') $executable
     if ($LASTEXITCODE -ne 0) { throw 'Qt deployment failed.' }

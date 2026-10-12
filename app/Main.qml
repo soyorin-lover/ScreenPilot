@@ -6,8 +6,8 @@ import QtMultimedia
 
 ApplicationWindow {
     id: root
-    width: 1080
-    height: 740
+    width: editing ? 1280 : 1080
+    height: editing ? 860 : 780
     minimumWidth: 860
     minimumHeight: 640
     visible: true
@@ -23,6 +23,9 @@ ApplicationWindow {
     palette.windowText: "#eeece7"
     palette.highlight: "#e4e0d8"
     palette.highlightedText: "#18191c"
+    property bool editing: false
+    property string pendingAction: ""
+    property url pendingEditingRecording: ""
     property bool reviewing: false
     property bool closeAfterSave: false
     property url reviewedFile: ""
@@ -31,7 +34,20 @@ ApplicationWindow {
         var seconds = Math.floor(ms / 1000)
         return Math.floor(seconds / 60).toString().padStart(2, "0") + ":" + (seconds % 60).toString().padStart(2, "0")
     }
+    function beginRecording() {
+        if (project.dirty) { pendingAction = "record"; unsavedProject.open(); return }
+        playback.stop()
+        reviewing = false
+        recorder.start()
+    }
     onClosing: function(event) {
+        if (exporter.busy) { event.accepted = false; return }
+        if (!recorder.busy && project.dirty) {
+            event.accepted = false
+            pendingAction = "close"
+            unsavedProject.open()
+            return
+        }
         if (recorder.busy) {
             event.accepted = false
             closeAfterSave = true
@@ -45,6 +61,7 @@ ApplicationWindow {
             if (!recorder.busy && recorder.lastRecording.toString() !== ""
                     && recorder.lastRecording.toString() !== root.reviewedFile.toString()) {
                 root.reviewedFile = recorder.lastRecording
+                root.pendingEditingRecording = root.reviewedFile
                 playback.source = root.reviewedFile
                 root.reviewing = true
             }
@@ -56,10 +73,49 @@ ApplicationWindow {
         title: "选择录制保存文件夹"
         onAccepted: recorder.outputDirectory = selectedFolder.toString()
     }
+    Dialog {
+        id: unsavedProject
+        anchors.centerIn: parent
+        modal: true
+        title: "当前工程有未保存修改"
+        width: 420
+        ColumnLayout {
+            width: parent.width
+            Label { text: "保存工程以保留剪辑，或明确放弃修改。"; wrapMode: Text.Wrap; Layout.fillWidth: true }
+            RowLayout {
+                Button { text: "先保存"; onClicked: { unsavedProject.close(); root.editing = true; editingView.saveProject() } }
+                Button { text: "放弃修改"; onClicked: {
+                    unsavedProject.close()
+                    project.discardChanges()
+                    if (root.pendingAction === "close") root.close()
+                    else root.beginRecording()
+                } }
+                Button { text: "取消"; onClicked: unsavedProject.close() }
+            }
+        }
+    }
+    Editor {
+        id: editingView
+        anchors.fill: parent
+        visible: root.editing
+        onBackRequested: root.editing = false
+    }
     MediaPlayer {
         id: playback
         videoOutput: review
         audioOutput: AudioOutput { volume: 0.7 }
+        onDurationChanged: {
+            if (duration > 0 && root.pendingEditingRecording.toString() !== ""
+                    && source.toString() === root.pendingEditingRecording.toString()) {
+                var recordingUrl = root.pendingEditingRecording
+                root.pendingEditingRecording = ""
+                project.newRecording(recordingUrl, duration / 1000, recorder.lastPointerSamples)
+                if (project.source.toString() === recordingUrl.toString()) {
+                    root.editing = true
+                    playback.stop()
+                }
+            }
+        }
     }
 
     component ActionButton: Button {
@@ -84,6 +140,7 @@ ApplicationWindow {
         }
     }
     ColumnLayout {
+        visible: !root.editing
         anchors.fill: parent
         anchors.margins: 28
         spacing: 20
@@ -99,6 +156,11 @@ ApplicationWindow {
                 Label { text: "录制，让演示更清晰"; color: "#929298"; font.pixelSize: 12 }
             }
             Item { Layout.fillWidth: true }
+            ActionButton {
+                text: project.hasProject ? "继续编辑" : "打开工程"
+                enabled: !recorder.busy
+                onClicked: { root.editing = true; if (!project.hasProject) editingView.requestOpen() }
+            }
             Rectangle {
                 implicitWidth: 112; implicitHeight: 30; radius: 15; color: "#232429"
                 Label { anchors.centerIn: parent; text: "Windows · 开发版"; color: "#aaa8a2"; font.pixelSize: 11 }
@@ -148,7 +210,7 @@ ApplicationWindow {
                         enabled: recorder.recording || (!recorder.busy && recorder.sources.length > 0)
                         onClicked: {
                             if (recorder.recording) recorder.stop()
-                            else { playback.stop(); root.reviewing = false; recorder.start() }
+                            else root.beginRecording()
                         }
                     }
                 }

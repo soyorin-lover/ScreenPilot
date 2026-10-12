@@ -19,12 +19,23 @@
 #include <QVideoFrame>
 #include <QVideoSink>
 #include <QWindowCapture>
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 RecordingController::RecordingController(QObject *parent)
     : QObject(parent), m_session(new QMediaCaptureSession(this)),
       m_screen(new QScreenCapture(this)), m_window(new QWindowCapture(this)),
       m_audio(new QAudioInput(this)), m_sink(new QVideoSink(this)),
-      m_watchdog(new QTimer(this)) {
+      m_watchdog(new QTimer(this)), m_pointerTimer(new QTimer(this)) {
+  m_pointerTimer->setTimerType(Qt::PreciseTimer);
+  m_pointerTimer->setInterval(
+      33); // Approximately 30 Hz; UI stalls delay samples.
+  connect(m_pointerTimer, &QTimer::timeout, this,
+          &RecordingController::samplePointer);
   m_directory =
       QDir(QStandardPaths::writableLocation(QStandardPaths::MoviesLocation))
           .filePath(QStringLiteral("ScreenPilot"));
@@ -71,6 +82,7 @@ RecordingController::RecordingController(QObject *parent)
             size.setWidth(qMax(2, size.width() & ~1));
             size.setHeight(qMax(2, size.height() & ~1));
             m_recorder->setVideoResolution(size);
+            beginPointerCapture();
             m_recorder->record();
             if (m_busy && !m_recording)
               m_watchdog->start(15000);
@@ -175,6 +187,8 @@ void RecordingController::refreshSources() {
 void RecordingController::start() {
   if (m_busy)
     return;
+  m_pendingPointerSamples.clear();
+  m_pointerClock.invalidate();
   m_error.clear();
   m_failed = false;
   m_stopRequested = false;
@@ -241,7 +255,102 @@ void RecordingController::start() {
     m_window->start();
   }
 }
+void RecordingController::beginPointerCapture() {
+#ifdef Q_OS_WIN
+  // Zero is first valid frame / record() request, not an encoder PTS.
+  // Monotonic approximation only: compositor-to-media sync is not verified.
+  m_pointerWindow = 0;
+  const auto &target = m_targets.at(m_selected);
+  if (!target.isScreen) {
+    // QCapturableWindow has no public native handle. Match only an exact,
+    // unique visible title; duplicate/missing titles disable spatial mapping.
+    struct Match {
+      QString title;
+      HWND window = nullptr;
+      int count = 0;
+    } match{target.window.description()};
+    const bool enumerated = EnumWindows(
+        [](HWND window, LPARAM data) -> BOOL {
+          auto &match = *reinterpret_cast<Match *>(data);
+          if (!IsWindowVisible(window))
+            return TRUE;
+          const int length = GetWindowTextLengthW(window);
+          if (length <= 0)
+            return TRUE;
+          QString title(length + 1, QChar());
+          const int copied = GetWindowTextW(
+              window, reinterpret_cast<LPWSTR>(title.data()), title.size());
+          title.resize(copied);
+          if (title == match.title) {
+            match.window = window;
+            ++match.count;
+          }
+          return TRUE;
+        },
+        reinterpret_cast<LPARAM>(&match));
+    if (enumerated && match.count == 1)
+      m_pointerWindow = reinterpret_cast<quintptr>(match.window);
+  }
+  m_pointerClock.start();
+  m_leftButtonDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+  samplePointer();
+  m_pointerTimer->start();
+#endif
+}
+void RecordingController::samplePointer() {
+#ifdef Q_OS_WIN
+  if (!m_busy || m_stopRequested || !m_pointerClock.isValid() ||
+      m_selected < 0 || m_selected >= m_targets.size())
+    return;
+  const double seconds = m_pointerClock.nsecsElapsed() / 1.0e9;
+  // Polling detects sampled down edges; a full press/release between ticks
+  // can be missed, and event-loop stalls increase this blind interval.
+  const bool down = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+  const bool click = down && !m_leftButtonDown;
+  m_leftButtonDown = down;
+  POINT cursor{};
+  if (!GetCursorPos(&cursor))
+    return;
+  RECT bounds{};
+  const auto &target = m_targets.at(m_selected);
+  bool valid = false;
+  if (target.isScreen && target.screen) {
+    // QScreen geometry is logical; matching display settings give physical
+    // bounds without multiplying mixed-DPI desktop origins by one DPR.
+    DEVMODEW mode{};
+    mode.dmSize = sizeof(mode);
+    const QString name = target.screen->name();
+    if (EnumDisplaySettingsW(reinterpret_cast<LPCWSTR>(name.utf16()),
+                             ENUM_CURRENT_SETTINGS, &mode)) {
+      bounds = {mode.dmPosition.x, mode.dmPosition.y,
+                mode.dmPosition.x + static_cast<LONG>(mode.dmPelsWidth),
+                mode.dmPosition.y + static_cast<LONG>(mode.dmPelsHeight)};
+      valid = true;
+    }
+  } else if (!target.isScreen) {
+    // Refresh each tick to follow movement. GetWindowRect includes non-client
+    // and invisible resize borders; Qt capture may crop these. Exact alignment
+    // needs backend-specific calibration; no pixel error bound is claimed.
+    const auto window = reinterpret_cast<HWND>(m_pointerWindow);
+    valid = window && IsWindow(window) && GetWindowRect(window, &bounds);
+    if (!valid)
+      m_pointerWindow = 0; // Do not rematch a disappeared window mid-recording.
+  }
+  const double width = bounds.right - bounds.left;
+  const double height = bounds.bottom - bounds.top;
+  const bool usable = valid && width > 0 && height > 0;
+  const double x = usable ? (cursor.x - bounds.left) / width : 0.0;
+  const double y = usable ? (cursor.y - bounds.top) / height : 0.0;
+  m_pendingPointerSamples.append(
+      QVariantMap{{"time", seconds},
+                  {"x", qBound(0.0, x, 1.0)},
+                  {"y", qBound(0.0, y, 1.0)},
+                  {"click", click},
+                  {"inside", usable && x >= 0 && x < 1 && y >= 0 && y < 1}});
+#endif
+}
 void RecordingController::stopCapture() {
+  m_pointerTimer->stop();
   m_screen->stop();
   m_window->stop();
 }
@@ -289,6 +398,7 @@ void RecordingController::finish() {
   if (!m_failed && file.exists() && file.size() > 0 &&
       m_recorder->recorderState() == QMediaRecorder::StoppedState) {
     m_last = QUrl::fromLocalFile(file.absoluteFilePath());
+    m_lastPointerSamples = m_pendingPointerSamples;
     m_status = tr("已保存录制");
   } else {
     if (m_error.isEmpty())
@@ -297,6 +407,8 @@ void RecordingController::finish() {
     if (file.exists() && file.size() == 0)
       QFile::remove(m_pending);
   }
+  m_pendingPointerSamples.clear();
+  m_pointerClock.invalidate();
   m_pending.clear();
   m_busy = false;
   m_recording = false;
