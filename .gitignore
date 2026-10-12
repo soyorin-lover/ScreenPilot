@@ -1,0 +1,9 @@
+/build/
+/probe-results/
+
+
+__pycache__/
+*.pyc
+
+# Detailed local validation evidence can contain machine and device information.
+/docs/validation/results/
