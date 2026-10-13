@@ -1,6 +1,7 @@
 #include "AppRuntime.h"
 #include <QtQml/qqmlextensionplugin.h>
 #include "AudioSmokeTest.h"
+#include "RecordingBarSmokeTest.h"
 #include "FrameConversionSmokeTest.h"
 #include "RenderBenchmark.h"
 #include "EncoderBenchmark.h"
@@ -113,6 +114,7 @@ int main(int argc, char **argv) {
   cli.addOption({"recording-profile-smoke-test", "Verify native and capped physical recording dimensions.", "directory"});
   cli.addOption({"native-export-smoke-test", "Verify source-resolution export with a high-resolution canvas.", "directory"});
   cli.addOption({"encoder-benchmark", "Time Qt H.264 encoding of BGRA, NV12 and YUV420P input.", "directory"});
+  cli.addOption({"recording-bar-smoke-test", "Verify the floating recording bar flow in the real application.", "directory"});
   cli.addOption({"render-benchmark", "Time canvas rendering on one decoded frame.", "source"});
   cli.addOption({"frame-conversion-smoke-test", "Compare fast YUV conversion with QVideoFrame::toImage.", "source"});
   cli.addOption({"audio-continuity-smoke-test", "Verify continuous system audio under GUI stalls.", "directory"});
@@ -295,6 +297,7 @@ int main(int argc, char **argv) {
   auto &effects = runtime.effects;
   auto &recoveryController = runtime.recoveryController;
   auto &engine = runtime.engine;
+  if (cli.isSet("recording-bar-smoke-test")) return runRecordingBarSmokeTest(app, runtime, cli.value("recording-bar-smoke-test"));
   if (cli.isSet("media-performance-test")) return runMediaPerformanceProbe(app, engine.rootObjects().first(), project, exporter, previewAudioProcessor, cli);
   if(cli.isSet("third-wiring-smoke-test")) return thirdUiSmoke(app,engine.rootObjects().first(),project,recoveryController,appSettings,exporter,effects,cli.value("third-wiring-smoke-test"),cli.value("wiring-result-directory"));
   if (cli.isSet("ui-snapshot-smoke-test")) {

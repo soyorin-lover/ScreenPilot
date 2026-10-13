@@ -26,6 +26,8 @@ qt_add_library(screenpilot_core STATIC
     app/BackgroundVideo.cpp
     app/BackgroundVideo.h
     app/CameraController.cpp
+    app/CaptureExclusion.cpp
+    app/CaptureExclusion.h
     app/CameraController.h
     app/CameraMotion.cpp
     app/CameraMotion.h
@@ -121,6 +123,7 @@ set_source_files_properties(app/InspectorStickers.qml PROPERTIES QT_RESOURCE_ALI
 set_source_files_properties(app/CameraMotionControls.qml PROPERTIES QT_RESOURCE_ALIAS CameraMotionControls.qml)
 set_source_files_properties(app/SettingsDialog.qml PROPERTIES QT_RESOURCE_ALIAS SettingsDialog.qml)
 set_source_files_properties(app/RecoveryPanel.qml PROPERTIES QT_RESOURCE_ALIAS RecoveryPanel.qml)
+set_source_files_properties(app/RecordingBar.qml PROPERTIES QT_RESOURCE_ALIAS RecordingBar.qml)
 qt_add_qml_module(screenpilot_core
     URI ScreenPilotApp
     QML_FILES app/Main.qml app/Editor.qml app/TimelineStrip.qml app/MemoWindow.qml
@@ -132,7 +135,7 @@ qt_add_qml_module(screenpilot_core
         app/StudioCard.qml app/StudioSegmented.qml app/StudioSliderRow.qml app/StudioSection.qml
         app/StudioHelp.qml app/StudioDivider.qml app/StudioDialog.qml app/StudioDialogFooter.qml
         app/StudioPopover.qml app/StudioMenu.qml app/StudioMenuItem.qml app/StudioDotGrid.qml
-        app/StudioNumberField.qml app/EffectItemList.qml app/EffectLane.qml app/RegionBox.qml app/RegionPicker.qml app/InspectorClip.qml app/InspectorAudio.qml app/InspectorScreen3D.qml app/InspectorFocus.qml app/InspectorStickers.qml app/CameraMotionControls.qml app/SettingsDialog.qml app/RecoveryPanel.qml
+        app/StudioNumberField.qml app/EffectItemList.qml app/EffectLane.qml app/RegionBox.qml app/RegionPicker.qml app/InspectorClip.qml app/InspectorAudio.qml app/InspectorScreen3D.qml app/InspectorFocus.qml app/InspectorStickers.qml app/CameraMotionControls.qml app/SettingsDialog.qml app/RecoveryPanel.qml app/RecordingBar.qml
 )
 
 qt_add_executable(ScreenPilot WIN32 app/main.cpp)
@@ -183,6 +186,8 @@ qt_add_executable(ScreenPilotProbe WIN32
     tests/ProbeMain.cpp
     tests/ProjectFlowSmokeTest.cpp
     tests/ProjectFlowSmokeTest.h
+    tests/RecordingBarSmokeTest.cpp
+    tests/RecordingBarSmokeTest.h
     tests/RecentProjectsSmokeTest.cpp
     tests/RecentProjectsSmokeTest.h
     tests/RecentUiSmokeTest.cpp

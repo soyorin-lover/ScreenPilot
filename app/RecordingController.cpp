@@ -1,5 +1,6 @@
 #include "RecordingController.h"
 #include "FrameConversion.h"
+#include "CaptureExclusion.h"
 #include "RecordingProfile.h"
 #include <QUuid>
 #include "WindowsAudioCapture.h"
@@ -1085,4 +1086,8 @@ bool RecordingController::addRecordingMarker() {
       {"sourceTime", time}, {"number", int(m_pendingMarkers.size()) + 1}});
   emit changed();
   return true;
+}
+
+bool RecordingController::excludeFromCapture(QWindow *window) {
+  return excludeWindowFromCapture(window);
 }

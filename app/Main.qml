@@ -43,6 +43,30 @@ ApplicationWindow {
         && pendingEditingRecording.toString() === ""
     Binding { target: StudioTheme; property: "dark"; value: appSettings.effectiveTheme === "dark" }
     MemoWindow { id: recorderMemo }
+    // While recording only the floating bar is on screen; the main window
+    // returns when the take is saved, discarded or fails.
+    property bool recordingSession: false
+    property bool restartingRecording: false
+    RecordingBar {
+        id: recordingBar
+        onStopRequested: recorder.stop()
+        onMemoRequested: recorderMemo.toggle()
+        onRestartConfirmed: { root.restartingRecording = true; recorder.restart() }
+        onDiscardConfirmed: recorder.discard()
+    }
+    function endRecordingSession() {
+        if (!recordingSession) return
+        recordingSession = false
+        restartingRecording = false
+        restartWatch.stop()
+        recordingBar.dismiss()
+        root.show()
+        root.raise()
+        root.requestActivate()
+    }
+    // A restart that never begins again (for example a camera error) must not
+    // leave the main window hidden.
+    Timer { id: restartWatch; interval: 3000; onTriggered: if (!recorder.busy) root.endRecordingSession() }
     SettingsDialog { id: settingsDialog }
     RecoveryPanel {
         id: recoveryPanel
@@ -71,7 +95,14 @@ ApplicationWindow {
         reviewing = false
         cameraUsedForRecording = cameraRecorder.enabled
         pendingDuration = 0
+        // Hide before capture starts so no frame shows the main window leaving.
+        recordingSession = true
+        restartingRecording = false
+        restartWatch.stop()
+        recordingBar.present(root.screen)
+        root.hide()
         recorder.start()
+        if (!recorder.busy) endRecordingSession()
     }
     function finishProjectSave(saved) {
         if (!awaitingProjectSave) return
@@ -121,6 +152,10 @@ ApplicationWindow {
             root.editing = false
         }
         function onChanged() {
+            if (root.recordingSession && !recorder.busy) {
+                if (root.restartingRecording) restartWatch.restart()
+                else root.endRecordingSession()
+            }
             if (root.closeAfterSave && !recorder.busy) root.close()
             if (!recorder.busy && recorder.lastRecording.toString() !== ""
                     && recorder.lastRecording.toString() !== root.reviewedFile.toString()) {

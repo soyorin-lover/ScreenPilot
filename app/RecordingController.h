@@ -13,6 +13,7 @@
 #include <memory>
 struct RecordingBufferMetrics;
 class QScreen;
+class QWindow;
 class QMediaCaptureSession;
 class QScreenCapture;
 class QWindowCapture;
@@ -106,6 +107,9 @@ public:
   QVariantList recordingMarkers() const { return m_pendingMarkers; }
   QVariantList lastRecordingMarkers() const { return m_lastMarkers; }
   Q_INVOKABLE bool addRecordingMarker();
+  // Keeps recorder helper windows (the floating recording bar) out of the
+  // captured video. Returns whether Windows confirmed the exclusion.
+  Q_INVOKABLE bool excludeFromCapture(QWindow *window);
   qint64 duration() const { return m_duration; }
   bool microphoneEnabled() const { return m_microphone; }
   QObject *previewSink() const;

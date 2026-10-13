@@ -47,7 +47,7 @@ C++20 / Qt 6.8.3 Qt Quick Basic style with shared styled controls; only Qt's own
 ## Open questions
 - [x] Dark theme uses shared reference tokens; editor and settings screenshots inspected (2026-10-13).
 - [ ] High-contrast preference; owner product/UI.
-- [ ] Recorder as a separate always-on-top floating bar window during capture (needs capture-exclusion handling like the memo window); owner product/platform.
+- [x] Recorder as a separate always-on-top floating bar window during capture: `RecordingBar.qml`, excluded from capture; menus and restart/discard confirmations unfold inside it; the main window hides before capture starts and returns after save, discard or failure (2026-10-13).
 - [x] Align 运镜 lane with TimelineStrip clip geometry and scrolling; mouse checks passed (2026-10-13).
 - [ ] Timeline zoom; owner editing.
 - [ ] Canvas shadow/frame chrome around the preview canvas and full per-state Mac comparison; owner product/UI/rendering.

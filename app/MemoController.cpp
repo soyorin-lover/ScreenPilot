@@ -1,4 +1,5 @@
 #include "MemoController.h"
+#include "CaptureExclusion.h"
 #include <QGuiApplication>
 #include <QScreen>
 #include <algorithm>
@@ -80,16 +81,7 @@ void MemoController::prepareWindow(QWindow *window) {
                      std::clamp(proposed.y(),safe.top(),safe.bottom()-height+1),width,height);
     window->setGeometry(proposed);
   }
-  m_captureExcluded = false;
-#ifdef Q_OS_WIN
-  // WDA_EXCLUDEFROMCAPTURE requires Windows 10 2004+. Older Windows can
-  // accept it as WDA_MONITOR, so verify the affinity rather than just BOOL.
-  const HWND handle = reinterpret_cast<HWND>(window->winId());
-  constexpr DWORD excludeFromCapture = 0x00000011;
-  DWORD affinity = 0;
-  m_captureExcluded = SetWindowDisplayAffinity(handle,excludeFromCapture)
-      && GetWindowDisplayAffinity(handle,&affinity) && affinity == excludeFromCapture;
-#endif
+  m_captureExcluded = excludeWindowFromCapture(window);
   emit captureExclusionChanged();
 }
 void MemoController::saveWindow(QWindow *window) {
