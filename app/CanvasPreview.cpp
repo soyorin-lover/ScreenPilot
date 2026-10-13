@@ -1,4 +1,5 @@
 #include "CanvasPreview.h"
+#include "FrameConversion.h"
 #include "CameraOverlay.h"
 #include "CameraMotion.h"
 #include "CanvasRenderer.h"
@@ -30,8 +31,8 @@ PreviewResult render(PreviewRequest request) {
   PreviewResult result;
   QElapsedTimer clock;
   clock.start();
-  result.source = request.sourceFrame.isValid() ? request.sourceFrame.toImage() : request.source;
-  result.camera = request.cameraFrame.isValid() ? request.cameraFrame.toImage() : request.cameraImage;
+  result.source = request.sourceFrame.isValid() ? FrameConversion::toImage(request.sourceFrame) : request.source;
+  result.camera = request.cameraFrame.isValid() ? FrameConversion::toImage(request.cameraFrame) : request.cameraImage;
   result.convertedSource = request.sourceFrame.isValid();
   result.conversionNanos = clock.nsecsElapsed();
   if (result.source.isNull()) return result;

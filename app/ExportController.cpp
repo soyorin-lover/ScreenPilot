@@ -1,4 +1,5 @@
 #include "ExportController.h"
+#include "FrameConversion.h"
 #include "BackgroundVideo.h"
 #include "AutoFraming.h"
 #include "AudioTimeStretch.h"
@@ -326,7 +327,7 @@ struct ExportController::Private {
       while (!cameraFrames.isEmpty() &&
              cameraFrames.head().startTime() <= desired) {
         cameraImageTime = cameraFrames.head().startTime();
-        cameraImage = cameraFrames.dequeue().toImage();
+        cameraImage = FrameConversion::toImage(cameraFrames.dequeue());
       }
       if (desired >= 0 && !cameraEnded && cameraFrames.isEmpty() &&
           cameraImageTime < desired)
@@ -406,7 +407,7 @@ struct ExportController::Private {
     if (first > last) { count("skippedReadbackFrames"); return; }
     QElapsedTimer clock;
     if (measure) clock.start();
-    QImage image = source.toImage();
+    QImage image = FrameConversion::toImage(source);
     if (measure) {
       const qint64 ns = clock.nsecsElapsed();
       count("readbackCount"); count("readbackTotalNs", ns); peak("readbackMaxNs", ns);
@@ -478,8 +479,14 @@ struct ExportController::Private {
         renderClock.restart();
       }
       if (image.isNull()) { fail(QStringLiteral("画布渲染失败，请检查背景媒体。")); return; }
-      image = image.scaled(size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
-          .convertToFormat(QImage::Format_RGBA8888);
+      // The canvas is rendered at the export size; scale only legacy raw
+      // (settings-less) outputs. Opaque premultiplied ARGB maps to BGRA for the
+      // encoder without a per-frame format copy, and keeps QPainter's fast path
+      // for the camera overlay below.
+      if (image.size() != size)
+        image = image.scaled(size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+      if (image.format() != QImage::Format_ARGB32_Premultiplied)
+        image.convertTo(QImage::Format_ARGB32_Premultiplied);
       if (measure) {
         const qint64 ns = renderClock.nsecsElapsed();
         count("formatCopyTotalNs", ns); peak("formatCopyMaxNs", ns);

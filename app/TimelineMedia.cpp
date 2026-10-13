@@ -1,4 +1,5 @@
 #include "TimelineMedia.h"
+#include "FrameConversion.h"
 #include <QAudioBuffer>
 #include <QAudioBufferOutput>
 #include <QColor>
@@ -164,7 +165,7 @@ void TimelineMedia::setSource(QUrl source, double duration) {
               if (frame.startTime() >= 0 &&
                   std::abs(frame.startTime() / 1000 - state->target) > 100)
                 return;
-              QImage image = frame.toImage().scaled(
+              QImage image = FrameConversion::toImage(frame).scaled(
                   160, 90, Qt::KeepAspectRatio, Qt::SmoothTransformation);
               if (image.isNull())
                 return;

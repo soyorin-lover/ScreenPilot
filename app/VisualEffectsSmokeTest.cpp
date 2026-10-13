@@ -1,4 +1,5 @@
 #include "VisualEffectsSmokeTest.h"
+#include "FrameConversion.h"
 #include "CanvasRenderer.h"
 #include "CameraOverlay.h"
 #include "CanvasPreview.h"
@@ -104,7 +105,7 @@ int runVisualEffectsSmokeTest(const QString &directory) {
     std::memset(frame.bits(0), 255, frame.mappedBytes(0));
     frame.unmap();
     frame.setRotation(QtVideo::Rotation::Clockwise90); // Presentation metadata is ignored by toImage.
-    const QSize expected = frame.toImage().size();
+    const QSize expected = FrameConversion::toImage(frame).size();
     CanvasPreview preview;
     preview.setSize(QSizeF(320,180));
     preview.videoSink()->setVideoFrame(frame);
@@ -121,7 +122,7 @@ int runVisualEffectsSmokeTest(const QString &directory) {
     const auto frame = videoFrame(QSize(320,180), qRgb(15,95,185), 1000000);
     preview.videoSink()->setVideoFrame(frame);
     asyncPixels = await([&] { return preview.renderedSerial() > 0 && preview.performanceMetrics().value("pending_jobs").toInt() == 0; }) &&
-        preview.renderedImage() == CanvasRenderer::render(frame.toImage(), preview.canvasSettings(), {}, QSize(640,360), {}, {}, {}, 0, 1);
+        preview.renderedImage() == CanvasRenderer::render(FrameConversion::toImage(frame), preview.canvasSettings(), {}, QSize(640,360), {}, {}, {}, 0, 1);
     const quint64 before = preview.renderedSerial();
     QVideoFrame newest;
     for (int i = 0; i < 50; ++i) {
@@ -129,8 +130,8 @@ int runVisualEffectsSmokeTest(const QString &directory) {
       preview.videoSink()->setVideoFrame(newest);
     }
     newestFrameCoalesced = await([&] { return preview.renderedSerial() > before && preview.performanceMetrics().value("pending_jobs").toInt() == 0; }) &&
-        preview.renderedFrameTime() == 2.49 && preview.sourceImage() == newest.toImage() &&
-        preview.renderedImage() == CanvasRenderer::render(newest.toImage(), preview.canvasSettings(), {}, QSize(640,360), {}, {}, {}, 0, 2.49) &&
+        preview.renderedFrameTime() == 2.49 && preview.sourceImage() == FrameConversion::toImage(newest) &&
+        preview.renderedImage() == CanvasRenderer::render(FrameConversion::toImage(newest), preview.canvasSettings(), {}, QSize(640,360), {}, {}, {}, 0, 2.49) &&
         preview.renderedSerial() - before < 50;
   }
   {
@@ -153,7 +154,7 @@ int runVisualEffectsSmokeTest(const QString &directory) {
     cameraClearInflight = preview.cameraFrameSize().isEmpty() &&
         await([&] { return preview.renderedSerial() > 0 && preview.performanceMetrics().value("pending_jobs").toInt() == 0; }) &&
         preview.cameraFrameSize().isEmpty() && preview.renderedImage() ==
-        CanvasRenderer::render(frame.toImage(), preview.canvasSettings(), {}, QSize(1920,1080), {}, {}, {}, 0, 4);
+        CanvasRenderer::render(FrameConversion::toImage(frame), preview.canvasSettings(), {}, QSize(1920,1080), {}, {}, {}, 0, 4);
   }
   {
     auto preview = std::make_unique<CanvasPreview>(); preview->setSize(QSizeF(1920,1080));

@@ -1,4 +1,5 @@
 #include "BackgroundVideo.h"
+#include "FrameConversion.h"
 #include <QFileInfo>
 #include <QVideoFrame>
 #include <cmath>
@@ -31,7 +32,7 @@ BackgroundVideo::BackgroundVideo(QObject *parent) : QObject(parent) {
     const qint64 begin = frame.startTime();
     const qint64 end = frame.endTime() > begin ? frame.endTime() : begin + 33333;
     if (begin < 0 || m_target < begin || m_target >= end) return;
-    const QImage image = frame.toImage();
+    const QImage image = FrameConversion::toImage(frame);
     if (image.isNull()) return;
     m_begin = begin; m_end = end; m_image = image;
     complete(image);

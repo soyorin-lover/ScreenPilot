@@ -11,6 +11,10 @@ qt_standard_project_setup(REQUIRES 6.8)
 
 qt_add_executable(ScreenPilot WIN32
     app/main.cpp
+    app/FrameConversion.cpp
+    app/FrameConversion.h
+    app/FrameConversionSmokeTest.cpp
+    app/FrameConversionSmokeTest.h
     app/AppSettings.cpp
     app/AppSettings.h
     app/UpdateController.cpp
