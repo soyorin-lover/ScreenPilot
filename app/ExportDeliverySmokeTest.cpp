@@ -58,8 +58,9 @@ int runExportDeliverySmokeTest(QGuiApplication &, const QString &directory, cons
   exporter.startOriginal(QUrl::fromLocalFile(source), QUrl::fromLocalFile(out.absolutePath()));
   const bool beganCopy = exporter.busy();
   exporter.cancel();
-  QGuiApplication::processEvents();
-  const bool cancelledCleanly = beganCopy && !exporter.busy() &&
+  // Cancellation stays busy until the private partial output is removed.
+  const bool settled = waitFor([&] { return !exporter.busy(); }, 10000);
+  const bool cancelledCleanly = beganCopy && settled &&
       out.entryList(QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot) == beforeCancel &&
       original == hash(bundle.filePath("screen." + suffix));
   exporter.startOriginal(QUrl::fromLocalFile(source), QUrl::fromLocalFile(out.absolutePath()),

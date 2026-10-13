@@ -66,7 +66,7 @@ inline int runMediaPerformanceProbe(QGuiApplication &app, QObject *root,
   total.start(); gap.start();
   QTimer timer;
   timer.setInterval(16);
-  QVector<double> gaps;
+  QVector<double> gaps, exportGaps;
   QVector<double> swapIntervals, presentedIntervals;
   quint64 lastPresentedSerial = 0;
   struct SwapStamp {
@@ -137,6 +137,9 @@ inline int runMediaPerformanceProbe(QGuiApplication &app, QObject *root,
     report["firstFrameTimestamp"] = firstTimestamp; report["lastFrameTimestamp"] = lastTimestamp;
     report["guiTimerGapP95Ms"] = gaps.isEmpty() ? 0 : gaps[std::min(gaps.size()-1, qsizetype(gaps.size()*.95))];
     report["guiTimerGapMaxMs"] = gaps.isEmpty() ? 0 : gaps.last();
+    std::sort(exportGaps.begin(), exportGaps.end());
+    report["exportGuiTimerGapP95Ms"] = exportGaps.isEmpty() ? 0 : exportGaps[std::min(exportGaps.size()-1, qsizetype(exportGaps.size()*.95))];
+    report["exportGuiTimerGapMaxMs"] = exportGaps.isEmpty() ? 0 : exportGaps.last();
     report["previewMetricsFinal"] = QJsonObject::fromVariantMap(preview->performanceMetrics());
     report["previewAudioError"] = latchedAudioError;
     report["previewAudioActive"] = audio.active();
@@ -203,6 +206,7 @@ inline int runMediaPerformanceProbe(QGuiApplication &app, QObject *root,
     }
     const double interval = gap.nsecsElapsed()/1e6; gap.restart();
     if (stage == 2) gaps.append(interval);
+    else if (stage == 3) exportGaps.append(interval);
     if (total.elapsed() > timeoutMs) { finish(false, QString("Probe exceeded %1 second timeout").arg(timeoutMs / 1000)); return; }
     if (stage == 0 && metadata.duration() > 0) {
       const QSize dimensions = metadata.metaData().value(QMediaMetaData::Resolution).toSize();

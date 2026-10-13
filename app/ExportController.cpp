@@ -29,6 +29,9 @@
 #include <QVideoFrameFormat>
 #include <QVideoFrameInput>
 #include <QVideoSink>
+#include <QMutex>
+#include <QThreadPool>
+#include <map>
 #include <algorithm>
 #include <cmath>
 
@@ -47,9 +50,33 @@ struct ExportController::Private {
   QQueue<QVideoFrame> cameraFrames, pendingScreen;
   QImage cameraImage;
   BackgroundVideo *background = nullptr;
-  struct RenderJob { QImage source, camera; qint64 sourceTime, tick, lastTick; };
+  // One decoded frame, converted once by whichever render worker needs it
+  // first. A sparse frame can cover several output ticks rendered in parallel.
+  struct SourceFrame {
+    QMutex mutex;
+    QVideoFrame frame;
+    QImage image;
+    QImage get() {
+      QMutexLocker lock(&mutex);
+      if (image.isNull() && frame.isValid()) {
+        image = FrameConversion::toImage(frame);
+        frame = {};
+      }
+      return image;
+    }
+  };
+  struct RenderJob { std::shared_ptr<SourceFrame> source; QImage camera; qint64 sourceTime, tick, lastTick; };
   QQueue<RenderJob> renderJobs;
-  bool rendering = false, renderScheduled = false;
+  bool renderScheduled = false, backgroundPending = false;
+  // Output ticks are composed concurrently on renderPool and committed to the
+  // encoder queue strictly in sequence order.
+  QThreadPool renderPool;
+  int renderInFlight = 0;
+  qint64 nextRenderSequence = 0, nextCommitSequence = 0;
+  std::map<qint64, QVideoFrame> renderedFrames;
+  int pendingRenderTicks() const {
+    return renderInFlight + int(renderedFrames.size()) + int(backgroundPending);
+  }
 
   qint64 cameraImageTime = -1, cameraOffset = 0;
   bool cameraEnded = false, cameraLoaded = false, cameraPaused = false;
@@ -100,7 +127,8 @@ struct ExportController::Private {
   void queueMetrics() {
     peak("videoQueuePeak", frames.size());
     peak("renderQueuePeak", renderJobs.size());
-    peak("combinedVideoQueuePeak", frames.size() + renderJobs.size());
+    peak("combinedVideoQueuePeak", frames.size() + renderJobs.size() + pendingRenderTicks());
+    peak("renderInFlightPeak", renderInFlight);
     peak("audioQueuePeak", buffers.size());
     peak("pendingScreenQueuePeak", pendingScreen.size());
   }
@@ -108,7 +136,7 @@ struct ExportController::Private {
     // Only the hysteresis thresholds need the count. Saturate while summing
     // compact spans so a long sparse frame cannot overflow or make this scan
     // proportional to the number of output ticks.
-    int ticks = std::min<int>(24, frames.size());
+    int ticks = std::min<int>(24, frames.size() + pendingRenderTicks());
     for (const RenderJob &job : renderJobs) {
       const qint64 remaining = job.lastTick - job.tick + 1;
       if (remaining >= 24 - ticks) return 24;
@@ -117,7 +145,12 @@ struct ExportController::Private {
     return ticks;
   }
 
-  explicit Private(ExportController *owner) : q(owner) {}
+  explicit Private(ExportController *owner) : q(owner) {
+    // Each worker holds one output-sized image; the queue bound below caps
+    // total memory as before. A few workers outpace the encoder; more only
+    // compete with a software encoder for cores.
+    renderPool.setMaxThreadCount(std::clamp(QThread::idealThreadCount() / 4, 2, 4));
+  }
   void touch() { activity.restart(); }
   void clear() {
     copyInput.close();
@@ -136,7 +169,10 @@ struct ExportController::Private {
         recorder->stop();
       run->deleteLater();
     }
-    background = nullptr; renderJobs.clear(); rendering = false; renderScheduled = false;
+    background = nullptr; renderJobs.clear(); renderScheduled = false; backgroundPending = false;
+    // Workers own copies of their inputs; stale results are dropped by the
+    // generation check when they arrive.
+    renderInFlight = 0; renderedFrames.clear(); nextRenderSequence = nextCommitSequence = 0;
     run = nullptr;
     player = nullptr;
     decoder = nullptr;
@@ -405,18 +441,23 @@ struct ExportController::Private {
     qint64 last = qint64(std::ceil(double(mappedEnd) * fps / 1000000.0));
     while (last >= first && tickTime(last) >= mappedEnd) --last;
     if (first > last) { count("skippedReadbackFrames"); return; }
-    QElapsedTimer clock;
-    if (measure) clock.start();
-    QImage image = FrameConversion::toImage(source);
-    if (measure) {
-      const qint64 ns = clock.nsecsElapsed();
-      count("readbackCount"); count("readbackTotalNs", ns); peak("readbackMaxNs", ns);
+    // CPU frames are converted later by a render worker. GPU surfaces (only
+    // with an explicit hardware-decoding override) are read back now so the
+    // decoder's small surface pool is never held by queued jobs.
+    auto sourceFrame = std::make_shared<SourceFrame>();
+    sourceFrame->frame = source;
+    if (source.handleType() != QVideoFrame::NoHandle && sourceFrame->get().isNull()) {
+      fail(QStringLiteral("视频帧无法转换为可编码图像。"));
+      return;
     }
-    if (image.isNull()) { fail(QStringLiteral("视频帧无法转换为可编码图像。")); return; }
     if (size.isEmpty()) {
+      QSize sourceSize = source.size();
+      const auto rotation = source.surfaceFormat().rotation();
+      if (rotation == QtVideo::Rotation::Clockwise90 || rotation == QtVideo::Rotation::Clockwise270)
+        sourceSize.transpose();
       const QString ratio = canvas.value("ratio", "source").toString();
-      size = resolution == "source" ? CanvasRenderer::nativeOutputSize(image.size(), canvas)
-          : canvas.isEmpty() ? image.size() : ratio == "source" ? CanvasRenderer::croppedSize(image.size(), canvas) : CanvasRenderer::outputSize(image.size(), canvas);
+      size = resolution == "source" ? CanvasRenderer::nativeOutputSize(sourceSize, canvas)
+          : canvas.isEmpty() ? sourceSize : ratio == "source" ? CanvasRenderer::croppedSize(sourceSize, canvas) : CanvasRenderer::outputSize(sourceSize, canvas);
       const int edge = resolution == "1080p" ? 1080 : resolution == "1440p" ? 1440 : resolution == "4k" ? 2160 : 0;
       if (edge) {
         const bool longEdge = ratio == "source" || ratio == "2.39:1" || ratio == "1:2.39";
@@ -430,10 +471,9 @@ struct ExportController::Private {
     const bool validCamera = cameraEnabled() && cameraTime >= 0 &&
         !cameraImage.isNull() && cameraImageTime <= cameraTime &&
         (!cameraPlayer || cameraPlayer->duration() <= 0 || cameraTime < cameraPlayer->duration() * 1000);
-    // Release decoder surfaces in this callback; retain only CPU pixels.
     // Store one compact span per decoded frame. Expand its output ticks only as
     // encoder capacity becomes available, including long-duration sparse frames.
-    renderJobs.enqueue({image, validCamera ? cameraImage : QImage(), timestamp, first, last});
+    renderJobs.enqueue({sourceFrame, validCamera ? cameraImage : QImage(), timestamp, first, last});
     lastVideoTime = tickTime(last);
     count("scheduledVideoFrames", last - first + 1);
     queueMetrics();
@@ -443,7 +483,7 @@ struct ExportController::Private {
     pump();
   }
   void scheduleRender() {
-    if (!busy || rendering || renderScheduled || renderJobs.isEmpty() || frames.size() >= 24) return;
+    if (!busy || renderScheduled || renderJobs.isEmpty() || !canDispatchRender()) return;
     renderScheduled = true;
     const quint64 requestGeneration = generation;
     QTimer::singleShot(0, q, [this, requestGeneration] {
@@ -452,57 +492,105 @@ struct ExportController::Private {
       drainRenderJobs();
     });
   }
+  bool canDispatchRender() const {
+    return !backgroundPending && renderInFlight < renderPool.maxThreadCount() &&
+           frames.size() + pendingRenderTicks() < 24;
+  }
+  // Takes output ticks in order. The background video decoder is sequential,
+  // so its frame is fetched on this thread; composition then runs on a worker.
   void drainRenderJobs() {
-    if (!busy || rendering || renderJobs.isEmpty() || frames.size() >= 24) return;
-    rendering = true;
-    const RenderJob job = renderJobs.head();
-    const qint64 time = qRound64(double(job.tick) * 1000000.0 / fps);
-    const qint64 end = std::min(total, qRound64(double(job.tick + 1) * 1000000.0 / fps));
-    if (!background) {
-      background = new BackgroundVideo(run);
-      background->setPath(canvas.value("backgroundVideo").toString());
+    while (busy && !renderJobs.isEmpty() && canDispatchRender()) {
+      RenderJob &head = renderJobs.head();
+      const RenderJob job = head;
+      if (++head.tick > head.lastTick) renderJobs.dequeue();
+      const qint64 time = qRound64(double(job.tick) * 1000000.0 / fps);
+      const qint64 end = std::min(total, qRound64(double(job.tick + 1) * 1000000.0 / fps));
+      if (!background) {
+        background = new BackgroundVideo(run);
+        background->setPath(canvas.value("backgroundVideo").toString());
+      }
+      const qint64 sequence = nextRenderSequence++;
+      const quint64 requestGeneration = generation;
+      backgroundPending = true;
+      // Completes synchronously without a background video.
+      background->request(double(time) / 1000000.0,
+          [this, job, time, end, sequence, requestGeneration](QImage backdrop, QString error) {
+        if (!busy || generation != requestGeneration) return;
+        backgroundPending = false;
+        if (!error.isEmpty()) { fail(error); return; }
+        dispatchRender(job, time, end, sequence, backdrop);
+        drainRenderJobs();
+      });
     }
+  }
+  void dispatchRender(const RenderJob &job, qint64 time, qint64 end, qint64 sequence, const QImage &backdrop) {
+    ++renderInFlight;
+    queueMetrics();
+    struct Inputs {
+      RenderJob job;
+      qint64 time, end;
+      QImage backdrop;
+      QVariantMap canvas, cameraSettings;
+      QVariantList framing, pointerSamples;
+      QSize size;
+      bool camera;
+    };
+    Inputs in{job, time, end, backdrop, canvas, cameraSettings, framing, pointerSamples, size,
+              cameraEnabled()};
     const quint64 requestGeneration = generation;
-    background->request(double(time) / 1000000.0,
-        [this, job, time, end, requestGeneration](QImage backdrop, QString error) {
-      if (!busy || generation != requestGeneration) return;
-      if (!error.isEmpty()) { fail(error); return; }
-      QElapsedTimer renderClock;
-      if (measure) renderClock.start();
-      QImage image = CanvasRenderer::render(job.source, canvas,
-          AutoFraming::evaluate(framing, double(job.sourceTime) / 1000000.0), {},
-          CursorEffects::evaluate(pointerSamples, double(job.sourceTime) / 1000000.0),
-          size, backdrop, double(time) / 1000000.0, double(job.sourceTime) / 1000000.0);
-      if (measure) {
-        const qint64 ns = renderClock.nsecsElapsed();
-        count("renderCount"); count("renderTotalNs", ns); peak("renderMaxNs", ns);
-        renderClock.restart();
+    renderPool.start([this, in = std::move(in), sequence, requestGeneration] {
+      QElapsedTimer clock;
+      clock.start();
+      const QImage source = in.job.source->get();
+      const qint64 renderStart = clock.nsecsElapsed();
+      const double sourceSeconds = double(in.job.sourceTime) / 1000000.0;
+      QImage image = source.isNull() ? QImage() : CanvasRenderer::render(source, in.canvas,
+          AutoFraming::evaluate(in.framing, sourceSeconds), {},
+          CursorEffects::evaluate(in.pointerSamples, sourceSeconds),
+          in.size, in.backdrop, double(in.time) / 1000000.0, sourceSeconds);
+      const qint64 renderNs = clock.nsecsElapsed() - renderStart;
+      QVideoFrame sampled;
+      QString failure;
+      if (source.isNull()) failure = QStringLiteral("视频帧无法转换为可编码图像。");
+      else if (image.isNull()) failure = QStringLiteral("画布渲染失败，请检查背景媒体。");
+      else {
+        // The canvas is rendered at the export size; scale only legacy raw
+        // (settings-less) outputs. Opaque premultiplied ARGB maps to BGRA for
+        // the encoder without a per-frame format copy.
+        if (image.size() != in.size)
+          image = image.scaled(in.size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        if (image.format() != QImage::Format_ARGB32_Premultiplied)
+          image.convertTo(QImage::Format_ARGB32_Premultiplied);
+        if (in.camera && CameraMotion::sourceToCameraTime(in.cameraSettings, sourceSeconds) >= 0 && !in.job.camera.isNull()) {
+          QPainter painter(&image);
+          CameraOverlay::paint(painter, image.size(), in.job.camera,
+                               CameraMotion::evaluate(in.cameraSettings, sourceSeconds),
+                               in.canvas, double(in.time) / 1000000.0);
+        }
+        sampled = QVideoFrame(image);
+        sampled.setStartTime(in.time);
+        sampled.setEndTime(in.end);
       }
-      if (image.isNull()) { fail(QStringLiteral("画布渲染失败，请检查背景媒体。")); return; }
-      // The canvas is rendered at the export size; scale only legacy raw
-      // (settings-less) outputs. Opaque premultiplied ARGB maps to BGRA for the
-      // encoder without a per-frame format copy, and keeps QPainter's fast path
-      // for the camera overlay below.
-      if (image.size() != size)
-        image = image.scaled(size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-      if (image.format() != QImage::Format_ARGB32_Premultiplied)
-        image.convertTo(QImage::Format_ARGB32_Premultiplied);
-      if (measure) {
-        const qint64 ns = renderClock.nsecsElapsed();
-        count("formatCopyTotalNs", ns); peak("formatCopyMaxNs", ns);
-      }
-      if (cameraEnabled() && CameraMotion::sourceToCameraTime(cameraSettings, job.sourceTime / 1000000.0) >= 0 && !job.camera.isNull()) {
-        QPainter painter(&image);
-        CameraOverlay::paint(painter, image.size(), job.camera, CameraMotion::evaluate(cameraSettings, job.sourceTime / 1000000.0),
-                             canvas, double(time) / 1000000.0);
-      }
-      QVideoFrame sampled(image);
-      sampled.setStartTime(time); sampled.setEndTime(end);
-      frames.enqueue(sampled);
-      if (++renderJobs.head().tick > renderJobs.head().lastTick) renderJobs.dequeue();
-      rendering = false;
-      touch(); initialize(); pump(); nextClipIfReady();
-      scheduleRender();
+      const qint64 totalNs = clock.nsecsElapsed();
+      // q outlives the pool: ~ExportController destroys Private (waiting for
+      // this pool) before QObject teardown discards undelivered events.
+      QMetaObject::invokeMethod(q, [this, sampled, failure, sequence, requestGeneration,
+                                    sourceNs = renderStart, renderNs, totalNs] {
+        if (!busy || generation != requestGeneration) return;
+        --renderInFlight;
+        if (!failure.isEmpty()) { fail(failure); return; }
+        count("renderCount"); count("renderTotalNs", renderNs); peak("renderMaxNs", renderNs);
+        count("workerTotalNs", totalNs);
+        count("sourceAccessTotalNs", sourceNs);
+        renderedFrames.emplace(sequence, sampled);
+        while (!renderedFrames.empty() && renderedFrames.begin()->first == nextCommitSequence) {
+          frames.enqueue(renderedFrames.begin()->second);
+          renderedFrames.erase(renderedFrames.begin());
+          ++nextCommitSequence;
+        }
+        touch(); initialize(); pump(); nextClipIfReady();
+        drainRenderJobs();
+      }, Qt::QueuedConnection);
     });
   }
   void receiveAudio(const QAudioBuffer &source) {
@@ -568,7 +656,7 @@ struct ExportController::Private {
 
   void nextClipIfReady() {
     if (!busy || ended || advancing || !clipVideoDone || !clipAudioDone ||
-        !pendingScreen.isEmpty() || !renderJobs.isEmpty() || rendering)
+        !pendingScreen.isEmpty() || !renderJobs.isEmpty() || pendingRenderTicks())
       return;
     advancing = true;
     player->pause();
@@ -752,6 +840,7 @@ ExportController::ExportController(QObject *parent)
     : QObject(parent), d(std::make_unique<Private>(this)) {}
 ExportController::~ExportController() {
   d->clear();
+  d->renderPool.waitForDone();
   if (!d->temporary.isEmpty())
     QFileInfo(d->temporary).isDir() ? QDir(d->temporary).removeRecursively() : QFile::remove(d->temporary);
 }
