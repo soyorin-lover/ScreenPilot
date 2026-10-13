@@ -66,17 +66,45 @@ int runFrameConversionSmokeTest(QGuiApplication &app, const QString &source) {
       }
     }
   }
+  // RGB -> NV12 -> RGB: flat primaries within rounding, natural content close.
+  qint64 nv12Ns = 0;
+  int flatMax = 0;
+  double roundTripMean = 0;
+  {
+    for (QRgb color : {qRgb(255, 0, 0), qRgb(0, 255, 0), qRgb(0, 0, 255), qRgb(32, 36, 44), qRgb(255, 255, 255), qRgb(0, 0, 0)}) {
+      QImage flat(64, 64, QImage::Format_ARGB32_Premultiplied);
+      flat.fill(color);
+      const QImage back = FrameConversion::toImage(FrameConversion::toNV12(flat));
+      const QRgb p = back.pixel(31, 31);
+      flatMax = std::max({flatMax, std::abs(qRed(p) - qRed(color)), std::abs(qGreen(p) - qGreen(color)), std::abs(qBlue(p) - qBlue(color))});
+    }
+    const QImage original = FrameConversion::toImage(frames.front()).convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    QElapsedTimer nv12Clock;
+    nv12Clock.start();
+    const QVideoFrame nv12 = FrameConversion::toNV12(original);
+    nv12Ns = nv12Clock.nsecsElapsed();
+    const QImage back = FrameConversion::toImage(nv12);
+    qint64 sum = 0, n = 0;
+    for (int y = 0; y < back.height(); y += 3)
+      for (int x = 0; x < back.width(); x += 3) {
+        const QRgb a = original.pixel(x, y), b = back.pixel(x, y);
+        sum += std::abs(qRed(a) - qRed(b)) + std::abs(qGreen(a) - qGreen(b)) + std::abs(qBlue(a) - qBlue(b));
+        n += 3;
+      }
+    roundTripMean = double(sum) / n;
+  }
   const auto format = frames.front().surfaceFormat();
   const double meanDiff = double(diffSum) / samples, over8Ratio = double(over8) / samples;
   const bool fast = FrameConversion::isFastPath(format);
   // Chroma edge filtering may differ from Qt's converter; the body must match.
-  const bool pass = !fast || (meanDiff < 1.0 && over8Ratio < .01);
+  const bool pass = (!fast || (meanDiff < 1.0 && over8Ratio < .01)) && flatMax <= 2 && roundTripMean < 3;
   const QJsonObject report{{"frames", int(frames.size())},
       {"width", frames.front().width()}, {"height", frames.front().height()},
       {"pixelFormat", QVideoFrameFormat::pixelFormatToString(format.pixelFormat())},
       {"colorSpace", int(format.colorSpace())}, {"colorRange", int(format.colorRange())},
       {"fastPath", fast}, {"qtMeanMs", qtNs / 1e6 / frames.size()}, {"fastMeanMs", fastNs / 1e6 / frames.size()},
-      {"meanChannelDiff", meanDiff}, {"maxChannelDiff", maxDiff}, {"over8Ratio", over8Ratio}, {"pass", pass}};
+      {"meanChannelDiff", meanDiff}, {"maxChannelDiff", maxDiff}, {"over8Ratio", over8Ratio},
+      {"nv12FlatMaxDiff", flatMax}, {"nv12RoundTripMeanDiff", roundTripMean}, {"nv12Ms", nv12Ns / 1e6}, {"pass", pass}};
   std::fprintf(stdout, "%s\n", QJsonDocument(report).toJson(QJsonDocument::Compact).constData());
   return pass ? 0 : 1;
 }

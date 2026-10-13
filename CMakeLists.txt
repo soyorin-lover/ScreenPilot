@@ -15,6 +15,10 @@ qt_add_executable(ScreenPilot WIN32
     app/FrameConversion.h
     app/FrameConversionSmokeTest.cpp
     app/FrameConversionSmokeTest.h
+    app/RenderBenchmark.cpp
+    app/RenderBenchmark.h
+    app/EncoderBenchmark.cpp
+    app/EncoderBenchmark.h
     app/AppSettings.cpp
     app/AppSettings.h
     app/UpdateController.cpp

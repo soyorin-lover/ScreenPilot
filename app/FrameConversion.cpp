@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <semaphore>
 #include <vector>
@@ -152,18 +153,74 @@ QThreadPool &pool() {
 // Bands are claimed from a shared counter by the caller and pool helpers alike,
 // so the caller never waits on a band nobody started (no pool starvation).
 struct Job {
-  Planes planes;
-  int bands = 1, rowsPerBand = 0;
+  std::function<void(int, int)> rows;
+  int height = 0, bands = 1, rowsPerBand = 0;
   std::atomic<int> next{0}, done{0};
   std::binary_semaphore finished{0};
   void work() {
     for (int band; (band = next.fetch_add(1)) < bands;) {
       const int first = band * rowsPerBand;
-      convertRows(planes, first, std::min(planes.height, first + rowsPerBand));
+      rows(first, std::min(height, first + rowsPerBand));
       if (done.fetch_add(1) + 1 == bands) finished.release();
     }
   }
 };
+// Runs rows(first, last) over [0, height) in even-aligned bands. Small images
+// stay on the calling thread; a thread hop costs more than it saves.
+void forEachBand(int width, int height, bool parallel, const std::function<void(int, int)> &rows) {
+  const int helpers = parallel && qint64(width) * height >= 640 * 360 ? pool().maxThreadCount() : 0;
+  if (!helpers) {
+    rows(0, height);
+    return;
+  }
+  auto job = std::make_shared<Job>();
+  job->rows = rows;
+  job->height = height;
+  job->bands = std::max(1, std::min(height / 2, (helpers + 1) * 2));
+  job->rowsPerBand = ((height + job->bands - 1) / job->bands + 1) & ~1;
+  job->bands = (height + job->rowsPerBand - 1) / job->rowsPerBand;
+  for (int i = 0; i < std::min(helpers, job->bands - 1); ++i)
+    pool().start([job] { job->work(); });
+  job->work();
+  job->finished.acquire();
+}
+
+// Limited-range R'G'B' -> Y'CbCr, 16.16 fixed point.
+struct Encode {
+  int yr, yg, yb, ur, ug, ub, vr, vg, vb;
+};
+Encode encodeMatrix(bool bt709) {
+  const double kr = bt709 ? .2126 : .299, kb = bt709 ? .0722 : .114, kg = 1 - kr - kb;
+  const double ys = 219. / 255, cs = 224. / 255;
+  auto fixed = [](double v) { return int(std::lround(v * 65536)); };
+  return {fixed(kr * ys), fixed(kg * ys), fixed(kb * ys),
+          fixed(-kr / (2 * (1 - kb)) * cs), fixed(-kg / (2 * (1 - kb)) * cs), fixed(.5 * cs),
+          fixed(.5 * cs), fixed(-kg / (2 * (1 - kr)) * cs), fixed(-kb / (2 * (1 - kr)) * cs)};
+}
+// Row pairs [first, last) of a 32-bit opaque image into NV12 planes; chroma is
+// the mean of each 2x2 block (centered siting, matching the decoder side).
+void nv12Rows(const QImage &image, const Encode &m, uchar *yPlane, int yStride, uchar *uvPlane, int uvStride, int first, int last) {
+  const int width = image.width();
+  for (int row = first; row < last; row += 2) {
+    const auto *a = reinterpret_cast<const QRgb *>(image.constScanLine(row));
+    const auto *b = reinterpret_cast<const QRgb *>(image.constScanLine(row + 1));
+    uchar *y0 = yPlane + qsizetype(row) * yStride, *y1 = y0 + yStride;
+    uchar *uv = uvPlane + qsizetype(row / 2) * uvStride;
+    for (int x = 0; x < width; x += 2) {
+      int r = 0, g = 0, bl = 0;
+      auto luma = [&](QRgb p, uchar *out) {
+        const int pr = qRed(p), pg = qGreen(p), pb = qBlue(p);
+        r += pr; g += pg; bl += pb;
+        *out = uchar((m.yr * pr + m.yg * pg + m.yb * pb + (16 << 16) + 32768) >> 16);
+      };
+      luma(a[x], y0 + x); luma(a[x + 1], y0 + x + 1);
+      luma(b[x], y1 + x); luma(b[x + 1], y1 + x + 1);
+      // Sums of four samples: scale by 1/4 in the shift.
+      uv[x] = uchar(std::clamp((m.ur * r + m.ug * g + m.ub * bl + (128 << 18) + (1 << 17)) >> 18, 0, 255));
+      uv[x + 1] = uchar(std::clamp((m.vr * r + m.vg * g + m.vb * bl + (128 << 18) + (1 << 17)) >> 18, 0, 255));
+    }
+  }
+}
 } // namespace
 
 bool FrameConversion::isFastPath(const QVideoFrameFormat &format) {
@@ -182,7 +239,7 @@ bool FrameConversion::isFastPath(const QVideoFrameFormat &format) {
          format.colorTransfer() != QVideoFrameFormat::ColorTransfer_STD_B67;
 }
 
-QImage FrameConversion::toImage(const QVideoFrame &source) {
+QImage FrameConversion::toImage(const QVideoFrame &source, bool parallel) {
   if (!source.isValid()) return {};
   const QVideoFrameFormat format = source.surfaceFormat();
   if (!isFastPath(format)) return source.toImage();
@@ -211,21 +268,29 @@ QImage FrameConversion::toImage(const QVideoFrame &source) {
     frame.unmap();
     return source.toImage();
   }
-  // Small frames (thumbnails, camera bubbles) are not worth a thread hop.
-  const int helpers = qint64(width) * height >= 640 * 360 ? pool().maxThreadCount() : 0;
-  if (!helpers) {
-    convertRows(planes, 0, height);
-  } else {
-    auto job = std::make_shared<Job>();
-    job->planes = planes;
-    job->bands = std::min(height / 2, (helpers + 1) * 2);
-    job->rowsPerBand = ((height + job->bands - 1) / job->bands + 1) & ~1;
-    job->bands = (height + job->rowsPerBand - 1) / job->rowsPerBand;
-    for (int i = 0; i < std::min(helpers, job->bands - 1); ++i)
-      pool().start([job] { job->work(); });
-    job->work();
-    job->finished.acquire();
-  }
+  forEachBand(width, height, parallel, [&planes](int first, int last) { convertRows(planes, first, last); });
   frame.unmap();
   return out;
+}
+
+QVideoFrame FrameConversion::toNV12(const QImage &image, bool parallel) {
+  const bool rgb32 = image.format() == QImage::Format_RGB32 || image.format() == QImage::Format_ARGB32 ||
+                     image.format() == QImage::Format_ARGB32_Premultiplied;
+  if (!rgb32 || image.width() < 2 || image.height() < 2 || image.width() % 2 || image.height() % 2)
+    return QVideoFrame(image);
+  QVideoFrameFormat format(image.size(), QVideoFrameFormat::Format_NV12);
+  const bool bt709 = image.height() > 576;
+  format.setColorSpace(bt709 ? QVideoFrameFormat::ColorSpace_BT709 : QVideoFrameFormat::ColorSpace_BT601);
+  format.setColorTransfer(QVideoFrameFormat::ColorTransfer_BT709);
+  format.setColorRange(QVideoFrameFormat::ColorRange_Video);
+  QVideoFrame frame(format);
+  if (!frame.map(QVideoFrame::WriteOnly)) return QVideoFrame(image);
+  uchar *y = frame.bits(0), *uv = frame.bits(1);
+  const int yStride = frame.bytesPerLine(0), uvStride = frame.bytesPerLine(1);
+  const Encode matrix = encodeMatrix(bt709);
+  forEachBand(image.width(), image.height(), parallel, [&](int first, int last) {
+    nv12Rows(image, matrix, y, yStride, uv, uvStride, first, last);
+  });
+  frame.unmap();
+  return frame;
 }

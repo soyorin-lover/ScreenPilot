@@ -1,5 +1,7 @@
 #include "AudioSmokeTest.h"
 #include "FrameConversionSmokeTest.h"
+#include "RenderBenchmark.h"
+#include "EncoderBenchmark.h"
 #include "PerformanceProbe.h"
 #include "AppSettings.h"
 #include "ThirdUiSmokeTest.h"
@@ -111,6 +113,8 @@ int main(int argc, char **argv) {
   cli.addOption({"wiring-result-directory", "Local third UI evidence.", "directory"});
   cli.addOption({"recording-profile-smoke-test", "Verify native and capped physical recording dimensions.", "directory"});
   cli.addOption({"native-export-smoke-test", "Verify source-resolution export with a high-resolution canvas.", "directory"});
+  cli.addOption({"encoder-benchmark", "Time Qt H.264 encoding of BGRA, NV12 and YUV420P input.", "directory"});
+  cli.addOption({"render-benchmark", "Time canvas rendering on one decoded frame.", "source"});
   cli.addOption({"frame-conversion-smoke-test", "Compare fast YUV conversion with QVideoFrame::toImage.", "source"});
   cli.addOption({"audio-continuity-smoke-test", "Verify continuous system audio under GUI stalls.", "directory"});
   cli.addVersionOption();
@@ -201,6 +205,8 @@ int main(int argc, char **argv) {
   cli.addOption({"editing-result-directory", "Local editing workflow evidence directory.", "directory"});
   cli.addOption({"ui-snapshot-smoke-test", "Capture recording, editor and export layouts using generated media.", "source"});
   cli.process(app);
+  if (cli.isSet("encoder-benchmark")) return runEncoderBenchmark(app, cli.value("encoder-benchmark"));
+  if (cli.isSet("render-benchmark")) return runRenderBenchmark(app, cli.value("render-benchmark"));
   if (cli.isSet("frame-conversion-smoke-test")) return runFrameConversionSmokeTest(app, cli.value("frame-conversion-smoke-test"));
   if (cli.isSet("backend-batch-smoke-test")) return runBackendBatchSmokeTest(app, cli.value("backend-batch-smoke-test"), cli.value("backend-result-directory"));
   if (cli.isSet("recording-profile-smoke-test")) return runRecordingProfileSmokeTest(app, cli.value("recording-profile-smoke-test"));

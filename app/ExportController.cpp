@@ -59,7 +59,7 @@ struct ExportController::Private {
     QImage get() {
       QMutexLocker lock(&mutex);
       if (image.isNull() && frame.isValid()) {
-        image = FrameConversion::toImage(frame);
+        image = FrameConversion::toImage(frame, false);
         frame = {};
       }
       return image;
@@ -149,7 +149,10 @@ struct ExportController::Private {
     // Each worker holds one output-sized image; the queue bound below caps
     // total memory as before. A few workers outpace the encoder; more only
     // compete with a software encoder for cores.
+    // Workers convert single-threaded (frames are the unit of parallelism) at
+    // low priority so the GUI and encoder threads keep their CPU time.
     renderPool.setMaxThreadCount(std::clamp(QThread::idealThreadCount() / 4, 2, 4));
+    renderPool.setThreadPriority(QThread::LowPriority);
   }
   void touch() { activity.restart(); }
   void clear() {
@@ -555,8 +558,7 @@ struct ExportController::Private {
       else if (image.isNull()) failure = QStringLiteral("画布渲染失败，请检查背景媒体。");
       else {
         // The canvas is rendered at the export size; scale only legacy raw
-        // (settings-less) outputs. Opaque premultiplied ARGB maps to BGRA for
-        // the encoder without a per-frame format copy.
+        // (settings-less) outputs, then hand the encoder tagged BT.709 NV12.
         if (image.size() != in.size)
           image = image.scaled(in.size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
         if (image.format() != QImage::Format_ARGB32_Premultiplied)
@@ -567,7 +569,7 @@ struct ExportController::Private {
                                CameraMotion::evaluate(in.cameraSettings, sourceSeconds),
                                in.canvas, double(in.time) / 1000000.0);
         }
-        sampled = QVideoFrame(image);
+        sampled = FrameConversion::toNV12(image, false);
         sampled.setStartTime(in.time);
         sampled.setEndTime(in.end);
       }
