@@ -266,7 +266,7 @@ QImage CanvasRenderer::render(const QImage &source, const QVariantMap &settings,
   painter.setTransform(ScreenEffects::projection(shell, size, s, effectTime), true);
   SceneEffects::apply(painter, shell, s, outputSeconds);
   const double shadow = s.value("shadow").toDouble();
-  // Layered falloff approximates a soft shadow; it is not the Mac blur kernel.
+  // Layered falloff approximates a soft shadow rather than a true Gaussian blur.
   if (!reuse && shadow > 0) {
     painter.setPen(Qt::NoPen);
     for (int i = 16; i >= 1; --i) {

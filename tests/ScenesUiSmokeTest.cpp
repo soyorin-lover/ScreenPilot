@@ -128,7 +128,7 @@ int runScenesUiSmokeTest(QGuiApplication &app, QObject *root,
         finish("Preset was not one history operation");
         return;
       }
-      const QString saved = QDir(directory).filePath("scenes.dogscproject");
+      const QString saved = QDir(directory).filePath("scenes.spproj");
       ProjectController reopened;
       const bool roundtrip =
           project.saveAs(QUrl::fromLocalFile(saved)) &&

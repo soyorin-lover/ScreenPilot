@@ -148,7 +148,7 @@ QImage ScreenEffects::applyRegions(const QImage &source, const QVariantMap &sett
     } else {
       const QRect pixels=rect.toAlignedRect().intersected(result.rect());
       const QImage patch=result.copy(pixels);
-      // Bounded downsample/reconstruction approximation, not a Mac blur kernel.
+      // Bounded downsample/reconstruction approximation of a Gaussian blur.
       const int factor=std::max(2,qRound(2+strength*30));
       const QImage blurred=patch.scaled(std::max(1,patch.width()/factor),std::max(1,patch.height()/factor),Qt::IgnoreAspectRatio,Qt::SmoothTransformation)
           .scaled(patch.size(),Qt::IgnoreAspectRatio,Qt::SmoothTransformation);

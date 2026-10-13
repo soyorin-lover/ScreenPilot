@@ -33,7 +33,7 @@ int runProjectFlowSmokeTest() {
     return 5;
   project.setFramingOption("scale", 2.5);
   const QUrl location =
-      QUrl::fromLocalFile(directory.filePath("saved.dogscproject"));
+      QUrl::fromLocalFile(directory.filePath("saved.spproj"));
   if (!project.saveAs(location) || project.dirty())
     return 6;
   ProjectController loaded;
@@ -49,7 +49,7 @@ int runProjectFlowSmokeTest() {
   if (loaded.setClipRate(0, 0) || loaded.moveClip(-1, 0))
     return 10;
   // Repeated source intervals are valid; chronology is the array order.
-  QFile json(directory.filePath("saved.dogscproject/project.json"));
+  QFile json(directory.filePath("saved.spproj/project.json"));
   if (!json.open(QIODevice::ReadOnly))
     return 11;
   auto root = QJsonDocument::fromJson(json.readAll()).object();

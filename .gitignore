@@ -1,12 +1,14 @@
 /build/
 /probe-results/
 
-
 __pycache__/
 *.pyc
 
-# Detailed local validation evidence can contain machine and device information.
+# Local-only material: archived notes and validation evidence (may contain
+# machine and device information) and agent instructions.
+/local-archive/
 /docs/validation/results/
+/AGENTS.md
 
 # Local agent/tool state
 .omc/

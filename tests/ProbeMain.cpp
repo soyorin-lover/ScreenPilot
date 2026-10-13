@@ -699,7 +699,7 @@ int main(int argc, char **argv) {
                         ? "Generated own window; captured sampling; optional "
                           "deterministic framing fixture if requested; basic "
                           "edit/save/reopen/export; no "
-                          "audio or Mac compatibility acceptance"
+                          "audio acceptance"
                         : "Generated own window recording only"}};
       QSaveFile json(output.absoluteFilePath("smoke-result.json"));
       bool saved = json.open(QIODevice::WriteOnly);
@@ -932,7 +932,7 @@ int main(int argc, char **argv) {
           }
           expectedEditedDuration = project.duration();
           const auto package = QUrl::fromLocalFile(
-              output.absoluteFilePath("Edited.dogscproject"));
+              output.absoluteFilePath("Edited.spproj"));
           if (!project.saveAs(package) || project.dirty()) {
             finish(false, "Project save: " + project.error());
             return;

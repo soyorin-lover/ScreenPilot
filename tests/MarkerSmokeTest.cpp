@@ -26,7 +26,7 @@ int verifyRecordingMarkers(QGuiApplication &, const QString &sourcePath,
   passed = passed && project.recordingMarkers().size() == 1;
   project.setExportOption("resolution", "1440p");
   project.setExportOption("fps", 30);
-  const QString path = QDir(outputDirectory).filePath("markers.dogscproject");
+  const QString path = QDir(outputDirectory).filePath("markers.spproj");
   passed = passed && project.saveAs(QUrl::fromLocalFile(path)) && !project.dirty();
   ProjectController reopened;
   passed = passed && reopened.openProject(QUrl::fromLocalFile(path)) &&

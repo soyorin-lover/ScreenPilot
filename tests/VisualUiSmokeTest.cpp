@@ -87,7 +87,7 @@ int runVisualUiSmokeTest(QGuiApplication &app, QObject *root,
         finish("Visual preset settings lost");
         return;
       }
-      const auto saved = QDir(directory).filePath("visuals.dogscproject");
+      const auto saved = QDir(directory).filePath("visuals.spproj");
       ProjectController reopened;
       const bool roundtrip =
           project.saveAs(QUrl::fromLocalFile(saved)) &&

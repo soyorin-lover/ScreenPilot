@@ -46,8 +46,8 @@ int runBackendBatchSmokeTest(QGuiApplication &app, const QString &source, const 
   AppSettings applicationSettings;
   const bool directories=applicationSettings.setValue("projectDirectory",out.filePath("projects")) &&
     applicationSettings.setValue("exportDirectory",out.filePath("exports"));
-  const auto suggested=applicationSettings.suggestedProjectUrl("Ready.dogscproject");
-  checks["settingsDestinations"] = directories && suggested.toLocalFile().endsWith("/projects/Ready.dogscproject") &&
+  const auto suggested=applicationSettings.suggestedProjectUrl("Ready.spproj");
+  checks["settingsDestinations"] = directories && suggested.toLocalFile().endsWith("/projects/Ready.spproj") &&
     applicationSettings.suggestedExportUrl("Ready.mp4","mp4").toLocalFile().endsWith("/exports/Ready.mp4") &&
     applicationSettings.suggestedProjectUrl("../escape").isEmpty();
   checks["effectivePreferences"] = applicationSettings.setValue("theme","dark") && applicationSettings.effectiveTheme()=="dark" &&
@@ -90,7 +90,7 @@ int runBackendBatchSmokeTest(QGuiApplication &app, const QString &source, const 
   QImage sticker(32,32,QImage::Format_ARGB32); sticker.fill(Qt::yellow); sticker.save(out.filePath("sticker.png"));
   const auto stickerId=project.addSticker(QUrl::fromLocalFile(out.filePath("sticker.png")),0,.5);
   checks["stickerImport"] = !stickerId.isEmpty() && project.updateSticker(stickerId,{{"rotation",15.0}});
-  const QUrl package=QUrl::fromLocalFile(out.filePath("Batch.dogscproject"));
+  const QUrl package=QUrl::fromLocalFile(out.filePath("Batch.spproj"));
   bool persisted=project.saveAs(package);
   ProjectController reopened;
   persisted=persisted && reopened.openProject(package) && !reopened.systemAudioSource().isEmpty() && reopened.canvasSettings().value("stickers").toList().size()==1;

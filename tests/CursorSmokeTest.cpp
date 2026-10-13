@@ -44,7 +44,7 @@ int runCursorSmokeTest(const QString &directory) {
               .value("clickAge")
               .toDouble() > .09 &&
       !CursorEffects::evaluate(samples, 1.2).value("inside").toBool();
-  const QString saved = QDir(directory).filePath("cursor-project.dogscproject");
+  const QString saved = QDir(directory).filePath("cursor-project.spproj");
   const bool savedOk = project.saveAs(QUrl::fromLocalFile(saved));
   ProjectController reopened;
   const bool persistence =

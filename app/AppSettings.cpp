@@ -121,7 +121,7 @@ QUrl AppSettings::suggest(const QString &directory,QString name,const QString &s
   }
   m_error.clear();emit changed();return QUrl::fromLocalFile(candidate);
 }
-QUrl AppSettings::suggestedProjectUrl(QString name) {return suggest(values().value("projectDirectory").toString(),name,"dogscproject");}
+QUrl AppSettings::suggestedProjectUrl(QString name) {return suggest(values().value("projectDirectory").toString(),name,"spproj");}
 QUrl AppSettings::suggestedExportUrl(QString name,QString suffix) {return suggest(values().value("exportDirectory").toString(),name,suffix);}
 bool AppSettings::notifyCompletion() {
   if(!values().value("completionSound").toBool()) return false;

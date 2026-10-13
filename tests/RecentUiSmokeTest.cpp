@@ -15,9 +15,9 @@ int runRecentUiSmokeTest(QGuiApplication &app, QObject *root,
                          const QString &source, const QString &directory) {
   QDir().mkpath(directory);
   const QUrl first =
-      QUrl::fromLocalFile(QDir(directory).filePath("first.dogscproject"));
+      QUrl::fromLocalFile(QDir(directory).filePath("first.spproj"));
   const QUrl second =
-      QUrl::fromLocalFile(QDir(directory).filePath("second.dogscproject"));
+      QUrl::fromLocalFile(QDir(directory).filePath("second.spproj"));
   ProjectController target;
   auto panel = root->findChild<QObject *>("recentProjectsPanel");
   auto unsaved = root->findChild<QObject *>("unsavedEditorDialog");

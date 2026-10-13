@@ -77,6 +77,6 @@ ColumnLayout {
         StudioNumberField { label: "持续时长"; suffix: "秒"; value: root.selected ? root.selected.sourceDuration : 0; from: .05; to: project.sourceDuration; onCommitted: v => effects.updateSelected(root.track, { sourceDuration: v }) }
         StudioButton { text: "删除此区域"; iconName: "trash"; danger: true; Layout.fillWidth: true; onClicked: effects.removeSelected(root.track) }
     }
-    StudioHelp { text: "当前模糊为近似实现，与原版滤镜效果尚未逐项校准。" }
+    StudioHelp { text: "模糊为近似实现，画面细节可能与预期略有差异。" }
     Text { visible: effects.error !== ""; text: effects.error; color: StudioTheme.danger; font.family: StudioTheme.fontFamily; font.pixelSize: StudioTheme.helper; wrapMode: Text.Wrap; Layout.fillWidth: true }
 }

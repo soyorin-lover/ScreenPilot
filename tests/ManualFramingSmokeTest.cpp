@@ -36,7 +36,7 @@ int verifyManualFraming(QGuiApplication &, const QString &sourcePath,const QStri
   auto earlier=p.manualFramingSegments().first().toMap(); earlier["manual"]=true;
   auto later=earlier; later["id"]="ffffffff-ffff-ffff-ffff-ffffffffffff"; later["start"]=2.5; later["scale"]=2.0; later["enter"]=0;
   passed=passed && AutoFraming::evaluate({earlier,later},3).scale==2 && AutoFraming::evaluate({later,earlier},3).scale==2;
-  const QString path=QDir(outputDirectory).filePath("manual.dogscproject");
+  const QString path=QDir(outputDirectory).filePath("manual.spproj");
   passed=passed && p.saveAs(QUrl::fromLocalFile(path));
   ProjectController reopened; passed=passed && reopened.openProject(QUrl::fromLocalFile(path)) && reopened.manualFramingSegments()==p.manualFramingSegments() && !reopened.dirty();
   reopened.removeManualFraming(id); reopened.undo(); passed=passed && !reopened.dirty();

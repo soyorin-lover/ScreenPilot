@@ -56,10 +56,10 @@ inline int thirdUiSmoke(QGuiApplication &app,QObject *root,ProjectController &pr
   checks["multiRate"] = project.selectedClips().size()==2 && project.setSelectedClipsRate(2.5);
   QMetaObject::invokeMethod(editor,"deleteSelection");checks["multiDelete"] = project.clips().size()==1;
   project.undo();checks["multiUndo"] = project.clips().size()==3;pause();
-  checks["saved"] = project.saveAs(QUrl::fromLocalFile(out.filePath("Before.dogscproject")));pause();
+  checks["saved"] = project.saveAs(QUrl::fromLocalFile(out.filePath("Before.spproj")));pause();
   QVariant renamed;
   QMetaObject::invokeMethod(editor,"renameProject",Q_RETURN_ARG(QVariant,renamed),Q_ARG(QVariant,QString("After")));
-  checks["renameInEditor"] = renamed.toBool() && wait([&]{return !editor->property("renaming").toBool() && project.projectLocation().toLocalFile().endsWith("After.dogscproject");});
+  checks["renameInEditor"] = renamed.toBool() && wait([&]{return !editor->property("renaming").toBool() && project.projectLocation().toLocalFile().endsWith("After.spproj");});
   checks["renameError"]=project.error();pause();
   const QUrl renamedUrl=project.projectLocation();
   QMetaObject::invokeMethod(editor,"loadProject",Q_ARG(QVariant,renamedUrl));

@@ -55,6 +55,7 @@ qt_add_library(screenpilot_core STATIC
     app/PreviewAudioProcessor.h
     app/ProjectController.cpp
     app/ProjectController.h
+    app/ProjectPackage.h
     app/RecentProjectsController.cpp
     app/RecentProjectsController.h
     app/RecordingController.cpp

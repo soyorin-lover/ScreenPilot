@@ -1,4 +1,5 @@
 #include "ProjectController.h"
+#include "ProjectPackage.h"
 #include "AutoFraming.h"
 #include "CameraOverlay.h"
 #include "CameraMotion.h"
@@ -381,8 +382,7 @@ bool ProjectController::saveAs(QUrl url) {
   if (!url.isLocalFile())
     return fail(tr("请选择本地工程目录"));
   QString dir = QDir::cleanPath(url.toLocalFile());
-  if (!dir.endsWith(".dogscproject", Qt::CaseInsensitive))
-    dir += ".dogscproject";
+  dir = ProjectPackage::withSuffix(dir);
   if (!m_location.isEmpty() &&
       QFileInfo(dir).canonicalFilePath() ==
           QFileInfo(m_location.toLocalFile()).canonicalFilePath())
@@ -465,8 +465,8 @@ bool ProjectController::openProject(QUrl url) {
        root.value("formatVersion").toDouble() != 6 &&
        root.value("formatVersion").toDouble() != 7 &&
        root.value("formatVersion").toDouble() != 8))
-    return fail(tr("仅支持 ScreenPilot 内部工程版本 1/2/3/4/5/6/7/8；Mac "
-                   "工程不受支持，拒绝编辑以保护未知字段"));
+    return fail(tr("仅支持 ScreenPilot 工程版本 1–8；无法识别此工程，"
+                   "为保护未知字段拒绝编辑"));
   double total =
       root.value("screenPilot").toObject().value("sourceDuration").toDouble(-1);
   if (!validTime(total) || total <= 0)
@@ -1352,7 +1352,7 @@ bool ProjectController::saveRecovery(QUrl directory) {
 bool ProjectController::renameProject(QString name) {
   name=name.trimmed();
   if(m_location.isEmpty() || name.isEmpty() || name=="." || name==".." || name.contains(QRegularExpression("[<>:\"/\\\\|?*]")) || name.endsWith('.')) return fail(tr("Invalid project name"));
-  if(!name.endsWith(".dogscproject",Qt::CaseInsensitive)) name+=".dogscproject";
+  name=ProjectPackage::withSuffix(name);
   const QString old=m_location.toLocalFile(); const QString target=QDir(QFileInfo(old).absolutePath()).filePath(name);
   if(QDir::cleanPath(old)==QDir::cleanPath(target)) return true;
   if(QFileInfo::exists(target) || !QDir().rename(old,target)) return fail(tr("Cannot rename project"));

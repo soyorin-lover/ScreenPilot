@@ -1,4 +1,5 @@
 #include "RecoveryController.h"
+#include "ProjectPackage.h"
 #include "ProjectController.h"
 #include <QDateTime>
 #include <QDir>
@@ -43,15 +44,15 @@ bool RecoveryController::owns(const QString &path) const {
   const QString name = info.fileName();
   if (base.isEmpty() || info.isSymLink() || !info.isDir() ||
       info.canonicalPath().compare(base, Qt::CaseInsensitive) != 0 ||
-      !name.endsWith(".dogscproject")) return false;
-  const QString id = name.chopped(QStringLiteral(".dogscproject").size());
+      ProjectPackage::suffixOf(name).isEmpty()) return false;
+  const QString id = name.chopped(ProjectPackage::suffixOf(name).size());
   if (QUuid(id).isNull() || QUuid(id).toString(QUuid::WithoutBraces) != id) return false;
   QFile marker(QDir(path).filePath(".screenpilot-recovery"));
   return marker.open(QIODevice::ReadOnly) && marker.readAll() == id.toUtf8();
 }
 QVariantList RecoveryController::snapshots() const {
   QVariantList result;
-  const auto entries = QDir(m_directory).entryInfoList({"*.dogscproject"}, QDir::Dirs | QDir::NoDotAndDotDot, QDir::Time);
+  const auto entries = QDir(m_directory).entryInfoList({"*" + ProjectPackage::suffix(), "*" + ProjectPackage::legacySuffix()}, QDir::Dirs | QDir::NoDotAndDotDot, QDir::Time);
   for (const auto &entry : entries) {
     if (!owns(entry.absoluteFilePath()) || !QFileInfo(QDir(entry.absoluteFilePath()).filePath("project.json")).isFile()) continue;
     result.append(QVariantMap{{"url", QUrl::fromLocalFile(entry.absoluteFilePath())},
@@ -64,7 +65,7 @@ bool RecoveryController::snapshotNow() {
   if (m_blocked || m_writing || !m_project->hasProject()) return false;
   if (!QDir().mkpath(m_directory)) { m_error = tr("无法创建恢复目录"); emit changed(); return false; }
   const QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-  const QString path = QDir(m_directory).filePath(id + ".dogscproject");
+  const QString path = QDir(m_directory).filePath(id + ProjectPackage::suffix());
   m_writing = true;
   const bool saved = m_project->saveRecovery(QUrl::fromLocalFile(path));
   m_writing = false;

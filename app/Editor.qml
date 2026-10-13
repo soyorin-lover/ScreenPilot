@@ -294,8 +294,8 @@ Rectangle {
         id: saveDialog
         title: "保存工程"
         fileMode: FileDialog.SaveFile
-        nameFilters: ["ScreenPilot 工程 (*.dogscproject)"]
-        defaultSuffix: "dogscproject"
+        nameFilters: ["ScreenPilot 工程 (*.spproj)"]
+        defaultSuffix: "spproj"
         currentFolder: appSettings.projectDirectoryUrl
         onVisibleChanged: if (visible) selectedFile = appSettings.suggestedProjectUrl()
         onAccepted: {
@@ -307,7 +307,7 @@ Rectangle {
         }
         onRejected: editor.finishProjectSave(false)
     }
-    FolderDialog { id: openDialog; title: "选择 .dogscproject 工程文件夹"; onAccepted: editor.loadProject(selectedFolder) }
+    FolderDialog { id: openDialog; title: "选择 .spproj 工程文件夹"; onAccepted: editor.loadProject(selectedFolder) }
     ColorDialog {
         id: backgroundColorDialog
         title: "选择画布背景颜色"

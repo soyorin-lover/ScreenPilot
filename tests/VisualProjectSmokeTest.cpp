@@ -56,7 +56,7 @@ int runVisualProjectSmokeTest(QGuiApplication &, const QString &directory, const
   ScenePresetController oldPreset(&project, oldStore);
   const bool oldPresetDefaults = oldPreset.applyPreset(id) && project.canvasSettings().value("backgroundVideo").toString().isEmpty() && !project.canvasSettings().value("introEnabled").toBool();
   project.undo();
-  const QString folder = QDir(temp.path()).filePath("saved.dogscproject");
+  const QString folder = QDir(temp.path()).filePath("saved.spproj");
   ok = project.saveAs(QUrl::fromLocalFile(folder)) && ok;
   QFile json(QDir(folder).filePath("project.json")); json.open(QIODevice::ReadOnly);
   auto root = QJsonDocument::fromJson(json.readAll()).object(); json.close();
