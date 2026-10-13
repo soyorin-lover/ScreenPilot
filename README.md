@@ -79,5 +79,3 @@ third_party/ 第三方许可声明
 ## 许可
 
 本项目以 [MIT 许可证](LICENSE) 发布。
-
-部分自动运镜、画布布局和光标几何的算法参考了 [DogSC](https://github.com/laogou717/dogsc)（MIT 许可，Copyright (c) 2026 神烦老狗）并做了改写，相应源文件开头注明了来源，版权声明见 [third_party/DogSC-LICENSE](third_party/DogSC-LICENSE)。
