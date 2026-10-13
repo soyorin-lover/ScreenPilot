@@ -9,129 +9,73 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Quick QuickControls2 Multimedia Network)
 qt_standard_project_setup(REQUIRES 6.8)
 
-qt_add_executable(ScreenPilot WIN32
-    app/main.cpp
-    app/FrameConversion.cpp
-    app/FrameConversion.h
-    app/FrameConversionSmokeTest.cpp
-    app/FrameConversionSmokeTest.h
-    app/RenderBenchmark.cpp
-    app/RenderBenchmark.h
-    app/EncoderBenchmark.cpp
-    app/EncoderBenchmark.h
+# Application code and the ScreenPilotApp QML module, shared by the product
+# executable and the verification probe.
+qt_add_library(screenpilot_core STATIC
+    app/AppRuntime.cpp
+    app/AppRuntime.h
     app/AppSettings.cpp
     app/AppSettings.h
-    app/UpdateController.cpp
-    app/UpdateController.h
-    app/EffectController.cpp
-    app/EffectController.h
-    app/BackendBatchSmokeTest.cpp
-    app/BackendBatchSmokeTest.h
-    app/CameraMotion.cpp
-    app/CameraMotion.h
-    app/ScreenEffects.cpp
-    app/ScreenEffects.h
-    app/PcmWaveFile.cpp
-    app/PcmWaveFile.h
     app/AudioMix.cpp
     app/AudioMix.h
+    app/AudioPacketTimeline.h
+    app/AudioTimeStretch.cpp
+    app/AudioTimeStretch.h
+    app/AutoFraming.cpp
+    app/AutoFraming.h
+    app/BackgroundVideo.cpp
+    app/BackgroundVideo.h
+    app/CameraController.cpp
+    app/CameraController.h
+    app/CameraMotion.cpp
+    app/CameraMotion.h
+    app/CameraOverlay.cpp
+    app/CameraOverlay.h
+    app/CanvasPreview.cpp
+    app/CanvasPreview.h
+    app/CanvasRenderer.cpp
+    app/CanvasRenderer.h
+    app/CropPreview.cpp
+    app/CropPreview.h
+    app/CursorEffects.cpp
+    app/CursorEffects.h
+    app/EffectController.cpp
+    app/EffectController.h
+    app/ExportController.cpp
+    app/ExportController.h
+    app/FrameConversion.cpp
+    app/FrameConversion.h
+    app/MemoController.cpp
+    app/MemoController.h
+    app/PcmWaveFile.cpp
+    app/PcmWaveFile.h
+    app/PreviewAudioProcessor.cpp
+    app/PreviewAudioProcessor.h
+    app/ProjectController.cpp
+    app/ProjectController.h
+    app/RecentProjectsController.cpp
+    app/RecentProjectsController.h
+    app/RecordingController.cpp
+    app/RecordingController.h
+    app/RecordingProfile.h
     app/RecoveryController.cpp
     app/RecoveryController.h
-    app/RecordingProfile.h
-    app/RecordingProfileSmokeTest.cpp
-    app/RecordingProfileSmokeTest.h
-    app/NativeExportSmokeTest.cpp
-    app/NativeExportSmokeTest.h
-    app/AudioCaptureContinuitySmokeTest.cpp
-    app/AudioCaptureContinuitySmokeTest.h
-    app/RecentProjectsController.h
-    app/RecentProjectsController.cpp
-    app/RecentProjectsSmokeTest.h
-    app/RecentProjectsSmokeTest.cpp
-    app/RecentUiSmokeTest.h
-    app/RecentUiSmokeTest.cpp
-    app/TimelineInteractionSmokeTest.h
-    app/TimelineInteractionSmokeTest.cpp
-    app/EditorShortcutSmokeTest.h
-    app/EditorShortcutSmokeTest.cpp
-    app/SceneEffects.h
     app/SceneEffects.cpp
-    app/BackgroundVideo.h
-    app/BackgroundVideo.cpp
-    app/DynamicBackgroundSmokeTest.h
-    app/DynamicBackgroundSmokeTest.cpp
-    app/VisualEffectsSmokeTest.h
-    app/VisualEffectsSmokeTest.cpp
-    app/VisualProjectSmokeTest.h
-    app/VisualProjectSmokeTest.cpp
-    app/VisualUiSmokeTest.h
-    app/VisualUiSmokeTest.cpp
-    app/ScenesUiSmokeTest.h
-    app/ScenesUiSmokeTest.cpp
-    app/CropPreview.h
-    app/CropPreview.cpp
-    app/CropSmokeTest.h
-    app/CropSmokeTest.cpp
-    app/ManualFramingSmokeTest.h
-    app/ManualFramingSmokeTest.cpp
-    app/ScenePresetController.h
+    app/SceneEffects.h
     app/ScenePresetController.cpp
-    app/PresetSmokeTest.h
-    app/PresetSmokeTest.cpp
-    app/MemoController.h
-    app/MemoController.cpp
-    app/MemoSmokeTest.h
-    app/MemoSmokeTest.cpp
-    app/MarkerSmokeTest.h
-    app/MarkerSmokeTest.cpp
-    app/ExportDeliverySmokeTest.h
-    app/ExportDeliverySmokeTest.cpp
-    app/CursorEffects.h
-    app/CursorEffects.cpp
-    app/CursorSmokeTest.h
-    app/CursorSmokeTest.cpp
-    app/RecordingControlSmokeTest.h
-    app/RecordingControlSmokeTest.cpp
-    app/PreviewAudioProcessor.h
-    app/PreviewAudioProcessor.cpp
-    app/PreviewAudioSmokeTest.h
-    app/PreviewAudioSmokeTest.cpp
-    app/AudioTimeStretch.h
-    app/AudioTimeStretch.cpp
-    app/AudioTimeStretchSmokeTest.h
-    app/AudioTimeStretchSmokeTest.cpp
-    app/CameraController.h
-    app/CameraController.cpp
-    app/CameraOverlay.h
-    app/CameraOverlay.cpp
-    app/CameraSmokeTest.h
-    app/CameraSmokeTest.cpp
-    app/ExportOptionsSmokeTest.h
-    app/ExportOptionsSmokeTest.cpp
-    app/ProjectFlowSmokeTest.h
-    app/ProjectFlowSmokeTest.cpp
-    app/TimelineMedia.h
+    app/ScenePresetController.h
+    app/ScreenEffects.cpp
+    app/ScreenEffects.h
     app/TimelineMedia.cpp
-    app/TimelineSmokeTest.h
-    app/TimelineSmokeTest.cpp
-    app/AudioSmokeTest.h
-    app/AudioSmokeTest.cpp
-    app/AudioPacketTimeline.h
-    app/WindowsAudioCapture.h
+    app/TimelineMedia.h
+    app/UpdateController.cpp
+    app/UpdateController.h
     app/WindowsAudioCapture.cpp
-    app/RecordingController.h
-    app/RecordingController.cpp
-    app/ProjectController.h
-    app/ProjectController.cpp
-    app/ExportController.h
-    app/ExportController.cpp
-    app/AutoFraming.h
-    app/AutoFraming.cpp
-    app/CanvasRenderer.h
-    app/CanvasRenderer.cpp
-    app/CanvasPreview.h
-    app/CanvasPreview.cpp
+    app/WindowsAudioCapture.h
 )
+target_include_directories(screenpilot_core PUBLIC app)
+target_link_libraries(screenpilot_core PUBLIC Qt6::Quick Qt6::QuickControls2 Qt6::Multimedia Qt6::Network user32 ole32 uuid mmdevapi)
+target_compile_definitions(screenpilot_core PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
 set_source_files_properties(app/Main.qml PROPERTIES QT_RESOURCE_ALIAS Main.qml)
 set_source_files_properties(app/Editor.qml PROPERTIES QT_RESOURCE_ALIAS Editor.qml)
 set_source_files_properties(app/TimelineStrip.qml PROPERTIES QT_RESOURCE_ALIAS TimelineStrip.qml)
@@ -177,7 +121,7 @@ set_source_files_properties(app/InspectorStickers.qml PROPERTIES QT_RESOURCE_ALI
 set_source_files_properties(app/CameraMotionControls.qml PROPERTIES QT_RESOURCE_ALIAS CameraMotionControls.qml)
 set_source_files_properties(app/SettingsDialog.qml PROPERTIES QT_RESOURCE_ALIAS SettingsDialog.qml)
 set_source_files_properties(app/RecoveryPanel.qml PROPERTIES QT_RESOURCE_ALIAS RecoveryPanel.qml)
-qt_add_qml_module(ScreenPilot
+qt_add_qml_module(screenpilot_core
     URI ScreenPilotApp
     QML_FILES app/Main.qml app/Editor.qml app/TimelineStrip.qml app/MemoWindow.qml
         app/CropEditor.qml app/ManualFramingControls.qml app/ManualZoomTrack.qml app/ScenePresetPanel.qml
@@ -190,5 +134,78 @@ qt_add_qml_module(ScreenPilot
         app/StudioPopover.qml app/StudioMenu.qml app/StudioMenuItem.qml app/StudioDotGrid.qml
         app/StudioNumberField.qml app/EffectItemList.qml app/EffectLane.qml app/RegionBox.qml app/RegionPicker.qml app/InspectorClip.qml app/InspectorAudio.qml app/InspectorScreen3D.qml app/InspectorFocus.qml app/InspectorStickers.qml app/CameraMotionControls.qml app/SettingsDialog.qml app/RecoveryPanel.qml
 )
-target_link_libraries(ScreenPilot PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Multimedia Qt6::Network user32 ole32 uuid mmdevapi)
-target_compile_definitions(ScreenPilot PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+
+qt_add_executable(ScreenPilot WIN32 app/main.cpp)
+target_link_libraries(ScreenPilot PRIVATE screenpilot_core screenpilot_coreplugin)
+
+# Smoke tests, probes and benchmarks (--*-test, --*-benchmark). Not shipped.
+qt_add_executable(ScreenPilotProbe WIN32
+    tests/AudioCaptureContinuitySmokeTest.cpp
+    tests/AudioCaptureContinuitySmokeTest.h
+    tests/AudioSmokeTest.cpp
+    tests/AudioSmokeTest.h
+    tests/AudioTimeStretchSmokeTest.cpp
+    tests/AudioTimeStretchSmokeTest.h
+    tests/BackendBatchSmokeTest.cpp
+    tests/BackendBatchSmokeTest.h
+    tests/CameraSmokeTest.cpp
+    tests/CameraSmokeTest.h
+    tests/CropSmokeTest.cpp
+    tests/CropSmokeTest.h
+    tests/CursorSmokeTest.cpp
+    tests/CursorSmokeTest.h
+    tests/DynamicBackgroundSmokeTest.cpp
+    tests/DynamicBackgroundSmokeTest.h
+    tests/EditorShortcutSmokeTest.cpp
+    tests/EditorShortcutSmokeTest.h
+    tests/EffectControllerSmokeTest.h
+    tests/EncoderBenchmark.cpp
+    tests/EncoderBenchmark.h
+    tests/ExportDeliverySmokeTest.cpp
+    tests/ExportDeliverySmokeTest.h
+    tests/ExportOptionsSmokeTest.cpp
+    tests/ExportOptionsSmokeTest.h
+    tests/FrameConversionSmokeTest.cpp
+    tests/FrameConversionSmokeTest.h
+    tests/ManualFramingSmokeTest.cpp
+    tests/ManualFramingSmokeTest.h
+    tests/MarkerSmokeTest.cpp
+    tests/MarkerSmokeTest.h
+    tests/MemoSmokeTest.cpp
+    tests/MemoSmokeTest.h
+    tests/NativeExportSmokeTest.cpp
+    tests/NativeExportSmokeTest.h
+    tests/PerformanceProbe.h
+    tests/PresetSmokeTest.cpp
+    tests/PresetSmokeTest.h
+    tests/PreviewAudioSmokeTest.cpp
+    tests/PreviewAudioSmokeTest.h
+    tests/ProbeMain.cpp
+    tests/ProjectFlowSmokeTest.cpp
+    tests/ProjectFlowSmokeTest.h
+    tests/RecentProjectsSmokeTest.cpp
+    tests/RecentProjectsSmokeTest.h
+    tests/RecentUiSmokeTest.cpp
+    tests/RecentUiSmokeTest.h
+    tests/RecordingControlSmokeTest.cpp
+    tests/RecordingControlSmokeTest.h
+    tests/RecordingProfileSmokeTest.cpp
+    tests/RecordingProfileSmokeTest.h
+    tests/RenderBenchmark.cpp
+    tests/RenderBenchmark.h
+    tests/ScenesUiSmokeTest.cpp
+    tests/ScenesUiSmokeTest.h
+    tests/ThirdEffectsSmokeTest.h
+    tests/ThirdUiSmokeTest.h
+    tests/TimelineInteractionSmokeTest.cpp
+    tests/TimelineInteractionSmokeTest.h
+    tests/TimelineSmokeTest.cpp
+    tests/TimelineSmokeTest.h
+    tests/VisualEffectsSmokeTest.cpp
+    tests/VisualEffectsSmokeTest.h
+    tests/VisualProjectSmokeTest.cpp
+    tests/VisualProjectSmokeTest.h
+    tests/VisualUiSmokeTest.cpp
+    tests/VisualUiSmokeTest.h
+)
+target_link_libraries(ScreenPilotProbe PRIVATE screenpilot_core screenpilot_coreplugin)

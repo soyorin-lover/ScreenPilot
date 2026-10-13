@@ -39,6 +39,8 @@
 
 传入自己的 Qt 6.8 MSVC kit 路径；Visual Studio 通过 vswhere 自动查找，也可传 `-VisualStudioRoot`。示例路径为通用占位。追加 `-Launch` 构建后打开应用；`-DeploymentDirectory` 可指定独立部署目录。默认部署到 `build/desktop/portable`。源码入口为根 CMakeLists.txt 和 app 目录，probes 为历史独立实验。
 
+工程结构：`app/` 编译为静态库 `screenpilot_core`（含 ScreenPilotApp QML 模块与 `AppRuntime` 装配），产品程序 `ScreenPilot.exe` 只含 `app/main.cpp`。全部 `--*-smoke-test`、`--media-performance-test` 与 `--render-benchmark`/`--encoder-benchmark`/`--frame-conversion-smoke-test` 位于 `tests/`，编译为 `build/desktop/ScreenPilotProbe.exe`，不随产品部署；下文命令中的检查参数需改用该程序运行（从构建目录运行时把 Qt 的 `bin` 加入 PATH）。
+
 ## 必要验证与复现
 
 构建和 Qt 依赖部署通过。运行下面命令，输出位置必须不存在或为空；不要提前在该目录内建立日志文件。
