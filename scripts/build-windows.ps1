@@ -6,6 +6,9 @@
     [switch]$Launch
 )
 $ErrorActionPreference = 'Stop'
+# Keep Ninja's MSVC header dependency prefix stable on localized Windows.
+$env:VSLANG = '1033'
+& chcp.com 65001 | Out-Null
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $buildDirectory = Join-Path $projectRoot 'build\desktop'
 if (!$VisualStudioRoot) {
@@ -21,7 +24,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Configure failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
 $executable = Join-Path $buildDirectory 'ScreenPilot.exe'
 if ($Deploy) {
-    $portableDirectory = if ($DeploymentDirectory) { [System.IO.Path]::GetFullPath($DeploymentDirectory) } else { Join-Path $buildDirectory 'portable-playback' }
+    $portableDirectory = if ($DeploymentDirectory) { [System.IO.Path]::GetFullPath($DeploymentDirectory) } else { Join-Path $buildDirectory 'portable' }
     New-Item -ItemType Directory -Force -Path $portableDirectory | Out-Null
     Copy-Item -LiteralPath $executable -Destination $portableDirectory
     Copy-Item -LiteralPath (Join-Path $projectRoot 'third_party\DogSC-LICENSE') -Destination (Join-Path $portableDirectory 'DogSC-LICENSE.txt')

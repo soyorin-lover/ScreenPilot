@@ -7,3 +7,6 @@ __pycache__/
 
 # Detailed local validation evidence can contain machine and device information.
 /docs/validation/results/
+
+# Local agent/tool state
+.omc/

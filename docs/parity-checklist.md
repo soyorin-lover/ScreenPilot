@@ -4,7 +4,9 @@
 
 ## 目标与证据边界
 
-将固定提交 `fa24059a9ba7e769152b3c1de047d96aca873e1c` 的 DogSC Mac 产品体验先完整带到 Windows，完成后再逐步移植 Linux。所有表内能力均在首版范围；分批开发仅决定实现顺序。遇到平台约束先验证替代方案，需要改变产品行为时再与用户讨论，不能以实现难度自行删减。
+用户批准的范围调整：Mac工程文件兼容、转换和双向往返，以及iPhone/iPad/iOS设备输入不再开发。C04/C05/C13设备专属行为排除；C01/C08保留桌面来源与对应配置。原版iOS行保留为参考事实，不参与本项目完成判定。工程操作继续以ScreenPilot自有格式验收；其余功能、界面和成片效果继续对齐。
+
+将固定提交 `fa24059a9ba7e769152b3c1de047d96aca873e1c` 的 DogSC Mac 产品体验先完整带到 Windows，完成后再逐步移植 Linux。除上述用户明确排除的Mac工程兼容与iOS设备输入外，表内产品能力在首版范围；分批开发仅决定实现顺序。遇到平台约束先验证替代方案，需要改变产品行为时再与用户讨论，不能以实现难度自行删减。
 
 本清单基于该提交的源码静态检查、[原版 README](https://github.com/laogou717/dogsc/blob/fa24059a9ba7e769152b3c1de047d96aca873e1c/README.md)和随提交保存的四张截图。源码确认表示存在相应控件、处理路径或模型规则，不等于已在 Mac 上运行成功。本文没有执行上游代码；独立 Windows 探针结果见 [W01 报告](validation/w01-window-capture.md)，不替代产品验收。所有功能的 Mac 实测和完整 Windows 验收均为**未执行**，Linux 为**后续移植、当前不开展**。截图只证明展示布局，不证明运行质量。
 
@@ -119,7 +121,7 @@
 | P06 | 关闭按持久化/未保存录制/编辑状态处理，可保留、保存、回收；失败保留完成卡 | [AppModel+ProjectCommands.swift:105](https://github.com/laogou717/dogsc/blob/fa24059a9ba7e769152b3c1de047d96aca873e1c/Sources/DogSCApp/AppModel+ProjectCommands.swift#L105) | 各状态关闭与保存失败，确认不丢工程 |
 | P07 | 删除当前工程须确认移到废纸篓，成功才关闭 | [AppModel+ProjectCommands.swift:221](https://github.com/laogou717/dogsc/blob/fa24059a9ba7e769152b3c1de047d96aca873e1c/Sources/DogSCApp/AppModel+ProjectCommands.swift#L221) | 取消不变；确认后检查回收站和窗口 |
 | P08 | 工程改名重定位包、媒体路径与最近列表，冲突用唯一目标名 | [ProjectStore.swift:1325](https://github.com/laogou717/dogsc/blob/fa24059a9ba7e769152b3c1de047d96aca873e1c/Sources/DogSCApp/ProjectStore.swift#L1325) | 改名/同名冲突后重开，三类素材可读 |
-| P09 | schema当前27、最低23；拒绝过旧/未来工程与编码未来版本 | [ProjectModel.swift:7](https://github.com/laogou717/dogsc/blob/fa24059a9ba7e769152b3c1de047d96aca873e1c/Sources/RecorderCore/ProjectModel.swift#L7) | v22/23/27/28样例，检查接受/拒绝及数据保护 |
+| P09 | 原版schema当前27、最低23，仅为参考事实；ScreenPilot独立维护版本并拒绝Mac/未知/未来工程 | [ProjectModel.swift:7](https://github.com/laogou717/dogsc/blob/fa24059a9ba7e769152b3c1de047d96aca873e1c/Sources/RecorderCore/ProjectModel.swift#L7) | 本项目内部旧/当前/未来版本样例，检查读取、拒绝及数据保护；不验收Mac格式兼容 |
 | P10 | 迁移备份原JSON；主JSON失败可回退previous；未来版本禁止回退旧快照 | [ProjectStore.swift:1089](https://github.com/laogou717/dogsc/blob/fa24059a9ba7e769152b3c1de047d96aca873e1c/Sources/DogSCApp/ProjectStore.swift#L1089) | 旧工程备份、损坏恢复、未来版本附旧快照仍拒绝 |
 | P11 | 完整工程和选区导出，标题与时长对应范围 | [EditorExportViews.swift:90](https://github.com/laogou717/dogsc/blob/fa24059a9ba7e769152b3c1de047d96aca873e1c/Sources/DogSCApp/EditorExportViews.swift#L90) | 完整/选段导出，检查输出起止与时长 |
 | P12 | 视频默认，MP4与仅音频M4A两种内容；音频为剪辑后混音 | [EditorExportViews.swift:417](https://github.com/laogou717/dogsc/blob/fa24059a9ba7e769152b3c1de047d96aca873e1c/Sources/DogSCApp/EditorExportViews.swift#L417) | 两模式扩展名、摘要、混音和输出内容 |
@@ -158,7 +160,7 @@
 
 | 项目 | 已知来源与待解决问题 | 当前处理 |
 | --- | --- | --- |
-| iOS 设备来源 | 原版包含设备来源入口；Windows 上连接、信任、取流与声音能否对应尚未验证 | 首版目标保留；第 2 步单独验证后提出实现或差异方案，不偷偷删除 |
+| iOS 设备来源 | 原版包含该入口，用户明确取消本项目iPhone/iPad输入 | 已排除，不开发、不验证、不在UI预留可用入口 |
 | 编码选项 | 原版录制包含 HEVC/H.264/ProRes 422；Apple 编码设施不能直接迁移 | 保留用户选项与素材语义目标；第 2 步验证可用编解码路径和分发约束 |
 | 系统声音范围 | 原版区分全部系统声音与所选窗口应用声音 | 当前只验证 Windows 隔离能力；不能把全系统录音冒充应用录音 |
 | 隐藏桌面项目、Dock及排除辅助窗口 | 各系统桌面、任务栏与采集排除机制不同 | 对应行为与限制需实测，不以重绘固定区域替代窗口采集 |
@@ -174,7 +176,7 @@
 | A：软件演示 | 录制窗口；有移动、单击、拖动和静止；添加标记；停止后编辑、保存、重开并导出 | 鼠标与操作对应，标记只在工程出现；裁剪后光标与运镜仍对齐；保存前后参数一致 |
 | B：讲解与摄像头 | 麦克风、系统声音和摄像头同时录制；剪切、重排、变速，添加摄像运动与同步点 | 各轨启停与时间关系正确，声音控制生效，摄像头同步不受错误时间映射影响 |
 | C：画面效果 | 同一固定素材添加手动/自动缩放、3D、贴图、柔化、裁切、动态背景与样机；复制效果及仅粘贴属性 | 指定时间点的画面、插值和图层关系对照Mac；属性粘贴不移动位置/时长；撤销重做可还原 |
-| D：导出与工程 | 重开v23–v27样例；修改后另存；分别导出视频和音频，覆盖分辨率/帧率与选段导出 | 输出实际尺寸/帧率、选段时长、素材路径、Mac往返、取消与已有文件保护 |
+| D：导出与工程 | 重开ScreenPilot内部版本样例；修改后另存；分别导出视频和音频，覆盖分辨率/帧率与选段导出 | 输出实际尺寸/帧率、选段时长、素材路径、内部工程往返、取消与已有文件保护 |
 | E：异常与环境 | 权限拒绝/取消选源、外设断开、磁盘满或保存失败、缺失素材/未来版本工程；多显示器与混合DPI | 明确反馈、无永久等待、已有数据不破坏；错误结果不能计为功能通过 |
 | F：设置与状态 | 清空偏好首次启动；切换语言/主题/预览画质；修改目录；重启与重开多工程 | 立即生效与持久化符合原版；预览质量独立于导出；录制中仍可编辑旧工程；小窗口控件可达 |
 
@@ -184,9 +186,9 @@
 
 - 对应版本 Mac 应用逐页操作记录、默认新工程、固定测试工程、参考导出和指定时间点参考帧；现有四张截图不足以证明全部状态与动画节奏。
 - 摄像头/麦克风/iOS设备的接入与断开，权限拒绝，录制中编辑旧工程，导出取消和文件写入失败的实际行为。
-- 23–27 工程样例、未支持版本与缺失媒体样例，跨平台修改后 Mac 重开的往返结果。
+- ScreenPilot内部旧/当前/未来版本、损坏工程与缺失媒体样例，以及本项目保存重开的结果；不收集Mac格式兼容样例。
 - 第 2 步的 Windows 录屏、声音、鼠标同步、合成与导出验证程序、结果和明确的性能/视觉容差。
 
 完成判定：每个能力编号都有 Windows 结果，范围内没有未完成能力；所有影响用户体验的平台差异均有依据和用户确认；界面、工程、预览与导出对照有证据。中间演示版本不得计为完整首版。
 
-当前结论：首版产品目标和源码能力已形成可追踪清单；Mac 实测、平台差异结论与量化阈值尚未完成。当前按用户授权进入第 2 步，独立探针结果单独记录，尚未进入产品开发。
+当前结论：已进入Windows应用开发，首版完整对齐尚未完成。后端扩展的实现、运行证据和限制见[后端交接文档](backend-api-handoff.md)及[公开结果](validation/public-results.md)；Mac实测、部分平台能力与完整效果对齐仍待完成。表中原版能力依据继续保留，新增接口不自动改变验收状态。
