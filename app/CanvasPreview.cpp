@@ -7,6 +7,8 @@
 #include <QElapsedTimer>
 #include <QPainter>
 #include <QQuickWindow>
+#include <QSGImageNode>
+#include <QSGTexture>
 #include <QTimer>
 #include <QVideoFrame>
 #include <cmath>
@@ -66,8 +68,8 @@ QSize CanvasPreview::imageSize(const QVideoFrame &frame) {
 }
 QSize CanvasPreview::outputSize() const { return CanvasRenderer::outputSize(sourceFrameSize(),m_settings); }
 CanvasPreview::CanvasPreview(QQuickItem *parent)
-    : QQuickPaintedItem(parent), m_settings(CanvasRenderer::defaults()) {
-  setAntialiasing(true);
+    : QQuickItem(parent), m_settings(CanvasRenderer::defaults()) {
+  setFlag(ItemHasContents);
   m_renderWorker = new QObject;
   m_renderWorker->moveToThread(&m_renderThread);
   connect(&m_renderThread, &QThread::finished, m_renderWorker, &QObject::deleteLater);
@@ -81,6 +83,9 @@ CanvasPreview::CanvasPreview(QQuickItem *parent)
             refresh();
             emit cameraFrameReady();
           });
+  // Re-fit the current texture at once; the refreshed composite follows.
+  connect(this, &QQuickItem::widthChanged, this, [this] { update(); });
+  connect(this, &QQuickItem::heightChanged, this, [this] { update(); });
   connect(this, &QQuickItem::widthChanged, this, &CanvasPreview::refresh);
   connect(this, &QQuickItem::heightChanged, this, &CanvasPreview::refresh);
   connect(&m_sink, &QVideoSink::videoFrameChanged, this,
@@ -172,6 +177,7 @@ void CanvasPreview::clearFrame() {
   m_source = {};
   m_frameTime = -1;
   m_rendered = {};
+  m_textureDirty = true;
   m_renderedFrameTime = -1;
   update();
   emit frameReady();
@@ -251,6 +257,7 @@ void CanvasPreview::renderPreview() {
         if (sourceRevision == owner->m_sourceRevision) owner->m_pendingSource = {};
         if (cameraRevision == owner->m_cameraRevision) owner->m_pendingCamera = {};
         owner->m_rendered = std::move(result.composite);
+        owner->m_textureDirty = true;
         owner->m_renderedFrameTime = sourceTime;
         owner->m_convertedFrames += result.convertedSource;
         owner->m_conversionNanos += result.conversionNanos;
@@ -266,14 +273,26 @@ void CanvasPreview::renderPreview() {
     }, Qt::QueuedConnection);
   }, Qt::QueuedConnection);
 }
-void CanvasPreview::paint(QPainter *painter) {
-  if (m_rendered.isNull())
-    return;
+QSGNode *CanvasPreview::updatePaintNode(QSGNode *oldNode, UpdatePaintNodeData *) {
+  auto *node = static_cast<QSGImageNode *>(oldNode);
+  if (m_rendered.isNull() || !window()) {
+    delete node;
+    return nullptr;
+  }
+  if (!node) {
+    node = window()->createImageNode();
+    node->setOwnsTexture(true);
+    node->setFiltering(QSGTexture::Linear);
+    m_textureDirty = true;
+  }
+  if (m_textureDirty) {
+    // The composite is opaque; skipping blending keeps the upload a plain copy.
+    node->setTexture(window()->createTextureFromImage(m_rendered, QQuickWindow::TextureIsOpaque));
+    m_textureDirty = false;
+  }
   QSizeF fit = m_rendered.size();
   fit.scale(QSizeF(width(), height()), Qt::KeepAspectRatio);
-  painter->setRenderHint(QPainter::SmoothPixmapTransform);
-  painter->drawImage(QRectF((width() - fit.width()) / 2,
-                            (height() - fit.height()) / 2, fit.width(),
-                            fit.height()),
-                     m_rendered);
+  node->setRect(QRectF((width() - fit.width()) / 2, (height() - fit.height()) / 2,
+                       fit.width(), fit.height()));
+  return node;
 }

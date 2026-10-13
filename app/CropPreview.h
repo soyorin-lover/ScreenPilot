@@ -1,4 +1,5 @@
 #pragma once
+#include <QQuickPaintedItem>
 #include "CanvasPreview.h"
 #include <QPointer>
 class CropPreview : public QQuickPaintedItem {

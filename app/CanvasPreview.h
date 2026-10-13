@@ -1,13 +1,15 @@
 #pragma once
 #include <QImage>
 #include "BackgroundVideo.h"
-#include <QQuickPaintedItem>
+#include <QQuickItem>
 #include <QVariantMap>
 #include <QVideoSink>
 #include <QVideoFrame>
 #include <QThread>
 
-class CanvasPreview : public QQuickPaintedItem {
+// Shows the worker-composed canvas as one scene graph texture. The image is
+// uploaded as-is during sync; no per-frame QPainter pass on the GUI thread.
+class CanvasPreview : public QQuickItem {
   Q_OBJECT
   Q_PROPERTY(double outputTime READ outputTime WRITE setOutputTime NOTIFY outputTimeChanged)
   Q_PROPERTY(QString error READ error NOTIFY backgroundErrorChanged)
@@ -58,7 +60,10 @@ public:
   QVariantMap camera() const { return m_camera; }
   void setCanvasSettings(const QVariantMap &settings);
   void setCamera(const QVariantMap &camera);
-  void paint(QPainter *painter) override;
+protected:
+  QSGNode *updatePaintNode(QSGNode *node, UpdatePaintNodeData *) override;
+
+public:
 signals:
   void renderedChanged();
   void outputTimeChanged();
@@ -98,6 +103,7 @@ private:
   bool m_cameraVisible = true;
   QVariantMap m_settings, m_camera;
   QImage m_source, m_rendered;
+  bool m_textureDirty = false;
   QVariantList m_pointerSamples;
   double m_frameTime = -1;
   double m_renderedFrameTime = -1;
