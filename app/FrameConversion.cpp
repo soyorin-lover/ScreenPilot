@@ -199,6 +199,9 @@ Encode encodeMatrix(bool bt709) {
 }
 // Row pairs [first, last) of a 32-bit opaque image into NV12 planes; chroma is
 // the mean of each 2x2 block (centered siting, matching the decoder side).
+// RgbaBytes: R,G,B,A byte order (QImage RGBA8888/RGBX8888) instead of
+// 0xAARRGGBB words.
+template <bool RgbaBytes>
 void nv12Rows(const QImage &image, const Encode &m, uchar *yPlane, int yStride, uchar *uvPlane, int uvStride, int first, int last) {
   const int width = image.width();
   for (int row = first; row < last; row += 2) {
@@ -209,7 +212,7 @@ void nv12Rows(const QImage &image, const Encode &m, uchar *yPlane, int yStride, 
     for (int x = 0; x < width; x += 2) {
       int r = 0, g = 0, bl = 0;
       auto luma = [&](QRgb p, uchar *out) {
-        const int pr = qRed(p), pg = qGreen(p), pb = qBlue(p);
+        const int pr = RgbaBytes ? qBlue(p) : qRed(p), pg = qGreen(p), pb = RgbaBytes ? qRed(p) : qBlue(p);
         r += pr; g += pg; bl += pb;
         *out = uchar((m.yr * pr + m.yg * pg + m.yb * pb + (16 << 16) + 32768) >> 16);
       };
@@ -273,24 +276,36 @@ QImage FrameConversion::toImage(const QVideoFrame &source, bool parallel) {
   return out;
 }
 
+bool FrameConversion::convertToNV12(const QImage &image, uchar *y, int yStride, uchar *uv, int uvStride, bool parallel) {
+  const bool rgbaBytes = image.format() == QImage::Format_RGBX8888 || image.format() == QImage::Format_RGBA8888 ||
+                         image.format() == QImage::Format_RGBA8888_Premultiplied;
+  const bool rgb32 = rgbaBytes || image.format() == QImage::Format_RGB32 || image.format() == QImage::Format_ARGB32 ||
+                     image.format() == QImage::Format_ARGB32_Premultiplied;
+  if (!rgb32 || image.width() < 2 || image.height() < 2 || image.width() % 2 || image.height() % 2)
+    return false;
+  const Encode matrix = encodeMatrix(nv12UsesBt709(image.height()));
+  forEachBand(image.width(), image.height(), parallel, [&](int first, int last) {
+    if (rgbaBytes) nv12Rows<true>(image, matrix, y, yStride, uv, uvStride, first, last);
+    else nv12Rows<false>(image, matrix, y, yStride, uv, uvStride, first, last);
+  });
+  return true;
+}
+
 QVideoFrame FrameConversion::toNV12(const QImage &image, bool parallel) {
-  const bool rgb32 = image.format() == QImage::Format_RGB32 || image.format() == QImage::Format_ARGB32 ||
+  const bool rgbaBytes = image.format() == QImage::Format_RGBX8888 || image.format() == QImage::Format_RGBA8888 ||
+                         image.format() == QImage::Format_RGBA8888_Premultiplied;
+  const bool rgb32 = rgbaBytes || image.format() == QImage::Format_RGB32 || image.format() == QImage::Format_ARGB32 ||
                      image.format() == QImage::Format_ARGB32_Premultiplied;
   if (!rgb32 || image.width() < 2 || image.height() < 2 || image.width() % 2 || image.height() % 2)
     return QVideoFrame(image);
   QVideoFrameFormat format(image.size(), QVideoFrameFormat::Format_NV12);
-  const bool bt709 = image.height() > 576;
-  format.setColorSpace(bt709 ? QVideoFrameFormat::ColorSpace_BT709 : QVideoFrameFormat::ColorSpace_BT601);
+  format.setColorSpace(nv12UsesBt709(image.height()) ? QVideoFrameFormat::ColorSpace_BT709
+                                                     : QVideoFrameFormat::ColorSpace_BT601);
   format.setColorTransfer(QVideoFrameFormat::ColorTransfer_BT709);
   format.setColorRange(QVideoFrameFormat::ColorRange_Video);
   QVideoFrame frame(format);
   if (!frame.map(QVideoFrame::WriteOnly)) return QVideoFrame(image);
-  uchar *y = frame.bits(0), *uv = frame.bits(1);
-  const int yStride = frame.bytesPerLine(0), uvStride = frame.bytesPerLine(1);
-  const Encode matrix = encodeMatrix(bt709);
-  forEachBand(image.width(), image.height(), parallel, [&](int first, int last) {
-    nv12Rows(image, matrix, y, yStride, uv, uvStride, first, last);
-  });
+  convertToNV12(image, frame.bits(0), frame.bytesPerLine(0), frame.bits(1), frame.bytesPerLine(1), parallel);
   frame.unmap();
   return frame;
 }

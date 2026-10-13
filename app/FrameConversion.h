@@ -20,4 +20,9 @@ bool isFastPath(const QVideoFrameFormat &format);
 // lines, BT.601 otherwise (the frame is tagged accordingly). Odd sizes and
 // other formats are wrapped unchanged.
 QVideoFrame toNV12(const QImage &image, bool parallel = true);
+// Same conversion into caller-owned planes (sizes must be even). Returns false
+// for unsupported image formats.
+bool convertToNV12(const QImage &image, uchar *y, int yStride, uchar *uv, int uvStride, bool parallel = true);
+// Whether NV12 output would use the BT.709 matrix for this many lines.
+inline bool nv12UsesBt709(int height) { return height > 576; }
 } // namespace FrameConversion

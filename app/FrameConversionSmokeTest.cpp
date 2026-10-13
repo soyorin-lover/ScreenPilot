@@ -1,5 +1,6 @@
 #include "FrameConversionSmokeTest.h"
 #include "FrameConversion.h"
+#include <QColor>
 #include <QElapsedTimer>
 #include <QGuiApplication>
 #include <QJsonDocument>
@@ -72,11 +73,14 @@ int runFrameConversionSmokeTest(QGuiApplication &app, const QString &source) {
   double roundTripMean = 0;
   {
     for (QRgb color : {qRgb(255, 0, 0), qRgb(0, 255, 0), qRgb(0, 0, 255), qRgb(32, 36, 44), qRgb(255, 255, 255), qRgb(0, 0, 0)}) {
-      QImage flat(64, 64, QImage::Format_ARGB32_Premultiplied);
-      flat.fill(color);
-      const QImage back = FrameConversion::toImage(FrameConversion::toNV12(flat));
-      const QRgb p = back.pixel(31, 31);
-      flatMax = std::max({flatMax, std::abs(qRed(p) - qRed(color)), std::abs(qGreen(p) - qGreen(color)), std::abs(qBlue(p) - qBlue(color))});
+      // Both word (screen composites) and byte (Windows capture) channel orders.
+      for (auto layout : {QImage::Format_ARGB32_Premultiplied, QImage::Format_RGBX8888}) {
+        QImage flat(64, 64, layout);
+        flat.fill(QColor::fromRgb(color));
+        const QImage back = FrameConversion::toImage(FrameConversion::toNV12(flat));
+        const QRgb p = back.pixel(31, 31);
+        flatMax = std::max({flatMax, std::abs(qRed(p) - qRed(color)), std::abs(qGreen(p) - qGreen(color)), std::abs(qBlue(p) - qBlue(color))});
+      }
     }
     const QImage original = FrameConversion::toImage(frames.front()).convertToFormat(QImage::Format_ARGB32_Premultiplied);
     QElapsedTimer nv12Clock;

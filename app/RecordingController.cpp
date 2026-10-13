@@ -1,4 +1,5 @@
 #include "RecordingController.h"
+#include "FrameConversion.h"
 #include "RecordingProfile.h"
 #include <QUuid>
 #include "WindowsAudioCapture.h"
@@ -44,16 +45,51 @@ struct RecordingBufferMetrics {
   }
 };
 namespace {
+QVideoFrameFormat nv12Format(QSize size) {
+  QVideoFrameFormat format(size, QVideoFrameFormat::Format_NV12);
+  format.setColorSpace(FrameConversion::nv12UsesBt709(size.height()) ? QVideoFrameFormat::ColorSpace_BT709
+                                                                     : QVideoFrameFormat::ColorSpace_BT601);
+  format.setColorTransfer(QVideoFrameFormat::ColorTransfer_BT709);
+  format.setColorRange(QVideoFrameFormat::ColorRange_Video);
+  return format;
+}
+bool evenSize(QSize size) { return size.width() >= 2 && size.height() >= 2 && size.width() % 2 == 0 && size.height() % 2 == 0; }
+QImage::Format imageFormatFor(QVideoFrameFormat::PixelFormat pixel) {
+  switch (pixel) {
+  case QVideoFrameFormat::Format_BGRA8888:
+  case QVideoFrameFormat::Format_BGRA8888_Premultiplied:
+  case QVideoFrameFormat::Format_BGRX8888:
+    return QImage::Format_RGB32; // little-endian B,G,R,A bytes; alpha unused
+  case QVideoFrameFormat::Format_RGBA8888:
+  case QVideoFrameFormat::Format_RGBX8888:
+    return QImage::Format_RGBX8888; // Windows screen/window capture
+  default:
+    return QImage::Format_Invalid;
+  }
+}
 // A new public video-buffer wrapper gives scheduled output independent PTS
 // without changing the explicitly shared capture frame. Mapping happens only
-// when the encoder consumes it, not on the GUI scheduling callback.
+// when the encoder consumes it, not on the GUI scheduling callback. 32-bit RGB
+// is converted to NV12 here with the multithreaded converter: Qt's encoder
+// would otherwise convert on its single thread (about half the 1440p
+// throughput) with the BT.601 matrix while leaving the file untagged, which
+// players and our editor decode as BT.709.
 class RecordingVideoBuffer final : public QAbstractVideoBuffer {
 public:
   RecordingVideoBuffer(QVideoFrame source, QRect crop, QSize size,
                        std::shared_ptr<RecordingBufferMetrics> metrics)
       : m_source(std::move(source)), m_crop(crop), m_size(size), m_metrics(std::move(metrics)),
         m_native(crop == QRect(QPoint(), m_source.size()) && size == m_source.size()),
-        m_format(m_native ? m_source.surfaceFormat() : QVideoFrameFormat(size, QVideoFrameFormat::Format_RGBA8888)) {}
+        m_nv12(evenSize(size) && (!m_native || imageFormatFor(m_source.surfaceFormat().pixelFormat()) != QImage::Format_Invalid)),
+        m_format(m_nv12 ? nv12Format(size) : m_native ? m_source.surfaceFormat()
+                                                      : QVideoFrameFormat(size, QVideoFrameFormat::Format_RGBA8888)) {}
+  // An already cropped and scaled frame, converted when the encoder maps it.
+  RecordingVideoBuffer(QImage image, std::shared_ptr<RecordingBufferMetrics> metrics)
+      : m_crop(image.rect()), m_size(image.size()), m_image(std::move(image)), m_metrics(std::move(metrics)),
+        m_nv12(evenSize(m_size)),
+        m_format(m_nv12 ? nv12Format(m_size) : QVideoFrameFormat(m_size, QVideoFrameFormat::Format_RGBA8888)) {
+    if (!m_nv12) m_image = m_image.convertToFormat(QImage::Format_RGBA8888);
+  }
   ~RecordingVideoBuffer() override { unmap(); }
   QVideoFrameFormat format() const override { return m_format; }
   MapData map(QVideoFrame::MapMode mode) override {
@@ -61,7 +97,16 @@ public:
     QElapsedTimer clock;
     if (m_metrics) clock.start();
     MapData data;
-    if (m_native) {
+    if (m_nv12) {
+      if (m_planes.isEmpty() && !convertNv12(clock)) return {};
+      const int yBytes = m_size.width() * m_size.height();
+      data.planeCount = 2;
+      data.data[0] = reinterpret_cast<uchar *>(m_planes.data());
+      data.data[1] = data.data[0] + yBytes;
+      data.bytesPerLine[0] = data.bytesPerLine[1] = m_size.width();
+      data.dataSize[0] = yBytes;
+      data.dataSize[1] = yBytes / 2;
+    } else if (m_native) {
       if (!m_source.map(QVideoFrame::ReadOnly)) return {};
       m_mapped = true;
       data.planeCount = m_source.planeCount();
@@ -72,19 +117,8 @@ public:
       }
       if (m_metrics) RecordingBufferMetrics::add(m_metrics->readbackNs, m_metrics->readbackMaxNs, clock.nsecsElapsed());
     } else {
-      if (m_image.isNull()) {
-        m_image = m_source.toImage();
-        if (m_metrics) {
-          RecordingBufferMetrics::add(m_metrics->readbackNs, m_metrics->readbackMaxNs, clock.nsecsElapsed());
-          clock.restart();
-        }
-        if (m_image.isNull()) return {};
-        if (m_crop != m_image.rect()) m_image = m_image.copy(m_crop);
-        if (m_image.size() != m_size) m_image = m_image.scaled(m_size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-        m_image = m_image.convertToFormat(QImage::Format_RGBA8888);
-        m_source = {};
-        if (m_metrics) RecordingBufferMetrics::add(m_metrics->transformNs, m_metrics->transformMaxNs, clock.nsecsElapsed());
-      }
+      if (m_image.isNull() && !transform(clock)) return {};
+      if (m_image.format() != QImage::Format_RGBA8888) m_image = m_image.convertToFormat(QImage::Format_RGBA8888);
       data.planeCount = 1;
       data.data[0] = const_cast<uchar *>(m_image.constBits());
       data.bytesPerLine[0] = m_image.bytesPerLine();
@@ -97,12 +131,60 @@ public:
     if (m_mapped) { m_source.unmap(); m_mapped = false; }
   }
 private:
+  // Crops/scales a non-native source into m_image (32-bit RGB).
+  bool transform(QElapsedTimer &clock) {
+    m_image = m_source.toImage();
+    if (m_metrics) {
+      RecordingBufferMetrics::add(m_metrics->readbackNs, m_metrics->readbackMaxNs, clock.nsecsElapsed());
+      clock.restart();
+    }
+    if (m_image.isNull()) return false;
+    if (m_crop != m_image.rect()) m_image = m_image.copy(m_crop);
+    if (m_image.size() != m_size) m_image = m_image.scaled(m_size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    m_source = {};
+    if (m_metrics) RecordingBufferMetrics::add(m_metrics->transformNs, m_metrics->transformMaxNs, clock.nsecsElapsed());
+    return true;
+  }
+  bool convertNv12(QElapsedTimer &clock) {
+    const int yBytes = m_size.width() * m_size.height();
+    m_planes.resize(yBytes + yBytes / 2);
+    auto *y = reinterpret_cast<uchar *>(m_planes.data());
+    bool converted = false;
+    if (m_native && m_image.isNull()) {
+      // Wrap the mapped capture pixels without a copy, then release the
+      // capture frame as soon as its pixels are in our planes.
+      if (!m_source.map(QVideoFrame::ReadOnly)) return false;
+      if (m_metrics) {
+        RecordingBufferMetrics::add(m_metrics->readbackNs, m_metrics->readbackMaxNs, clock.nsecsElapsed());
+        clock.restart();
+      }
+      const QImage view(m_source.bits(0), m_size.width(), m_size.height(), m_source.bytesPerLine(0),
+                        imageFormatFor(m_source.surfaceFormat().pixelFormat()));
+      converted = FrameConversion::convertToNV12(view, y, m_size.width(), y + yBytes, m_size.width());
+      m_source.unmap();
+      m_source = {};
+    } else {
+      if (m_image.isNull() && !transform(clock)) return false;
+      if (m_image.format() != QImage::Format_RGB32 && m_image.format() != QImage::Format_ARGB32 &&
+          m_image.format() != QImage::Format_ARGB32_Premultiplied)
+        m_image.convertTo(QImage::Format_RGB32);
+      converted = FrameConversion::convertToNV12(m_image, y, m_size.width(), y + yBytes, m_size.width());
+      m_image = {};
+    }
+    if (!converted) {
+      m_planes.clear();
+      return false;
+    }
+    if (m_metrics) RecordingBufferMetrics::add(m_metrics->transformNs, m_metrics->transformMaxNs, clock.nsecsElapsed());
+    return true;
+  }
   QVideoFrame m_source;
   QRect m_crop;
   QSize m_size;
   QImage m_image;
+  QByteArray m_planes;
   std::shared_ptr<RecordingBufferMetrics> m_metrics;
-  bool m_native = false, m_mapped = false;
+  bool m_native = false, m_nv12 = false, m_mapped = false;
   QVideoFrameFormat m_format;
 };
 }
@@ -236,6 +318,8 @@ RecordingController::RecordingController(QObject *parent)
               metric("capturedFrames");
               m_performanceMetrics["rawCaptureWidth"] = frame.width();
               m_performanceMetrics["rawCaptureHeight"] = frame.height();
+              m_performanceMetrics["capturePixelFormat"] = QVideoFrameFormat::pixelFormatToString(frame.surfaceFormat().pixelFormat());
+              m_performanceMetrics["captureHandleType"] = int(frame.handleType());
             }
             m_latestVideoFrame = frame;
             if (!m_waitingFrame) return;
@@ -395,7 +479,7 @@ void RecordingController::scheduleVideoFrame() {
     if (crop.width() < 2 || crop.height() < 2) { fail(tr("Capture region is too small.")); return; }
     const bool native = crop == QRect(QPoint(), m_latestVideoFrame.size()) &&
         m_effectiveVideoSize == m_latestVideoFrame.size();
-    QVideoFrame output;
+    QVideoFrame output, previewFrame;
     if (native) {
       output = QVideoFrame(std::make_unique<RecordingVideoBuffer>(
           m_latestVideoFrame, crop, m_effectiveVideoSize, m_bufferMetrics));
@@ -407,7 +491,8 @@ void RecordingController::scheduleVideoFrame() {
       if (crop != image.rect()) image = image.copy(crop);
       if (image.size() != m_effectiveVideoSize)
         image = image.scaled(m_effectiveVideoSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-      output = QVideoFrame(image);
+      previewFrame = QVideoFrame(image);
+      output = QVideoFrame(std::make_unique<RecordingVideoBuffer>(std::move(image), m_bufferMetrics));
     }
     metric(native ? "nativeMappedFrames" : "transformedFrames");
     const qint64 sourceStart = m_latestVideoFrame.startTime(), sourceEnd = m_latestVideoFrame.endTime();
@@ -420,7 +505,7 @@ void RecordingController::scheduleVideoFrame() {
     m_pendingVideoFrame = output;
     // Native capture already has the exact preview pixels. Preserve its GPU
     // handle for the preview rather than forcing it through the CPU wrapper.
-    if (m_preview) m_preview->setVideoFrame(native ? m_latestVideoFrame : output);
+    if (m_preview) m_preview->setVideoFrame(native ? m_latestVideoFrame : previewFrame);
     m_nextVideoIndex = index + 1;
     pumpVideoFrame();
   }
