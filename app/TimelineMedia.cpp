@@ -92,6 +92,9 @@ void TimelineMedia::setSource(QUrl source, double duration) {
   m_waveform.clear();
   for (int i = 0; i < count; ++i)
     m_waveform.append(0.0);
+  m_pendingWaveform = m_waveform;
+  m_progress = 0;
+  emit progressChanged();
   {
     QMutexLocker lock(&m_cache->mutex);
     m_cache->images.clear();
@@ -121,7 +124,8 @@ void TimelineMedia::setSource(QUrl source, double duration) {
     struct State {
       int index = -1;
       qint64 target = 0;
-      bool image = false;
+      bool image = false, advancing = false;
+      qint64 audioEnd = -1; // ms covered by received audio
       double peak = 0;
     };
     auto state = std::make_shared<State>();
@@ -130,19 +134,23 @@ void TimelineMedia::setSource(QUrl source, double duration) {
       if (state->index >= 0) {
         const int index = state->index;
         const double peak = state->peak;
-        QMetaObject::invokeMethod(this, [this, generation, index, peak] {
+        QMetaObject::invokeMethod(this, [this, generation, index, peak, count] {
           if (generation != m_generation)
             return;
-          m_waveform[index] = peak;
-          ++m_revision;
-          emit changed();
+          m_pendingWaveform[index] = peak;
+          m_progress = double(index + 1) / count;
+          emit progressChanged();
         });
       }
       if (++state->index >= count) {
         player->stop();
         QMetaObject::invokeMethod(this, [this, generation] {
           if (generation == m_generation) {
+            m_waveform = m_pendingWaveform;
+            ++m_revision;
             m_busy = false;
+            m_progress = 1;
+            emit progressChanged();
             emit changed();
           }
         });
@@ -150,6 +158,8 @@ void TimelineMedia::setSource(QUrl source, double duration) {
         return;
       }
       state->image = false;
+      state->advancing = false;
+      state->audioEnd = -1;
       state->peak = 0;
       state->target = qint64(duration * 1000 * (state->index + .5) / count);
       player->setPosition(state->target);
@@ -157,8 +167,17 @@ void TimelineMedia::setSource(QUrl source, double duration) {
       timer->start(350);
     };
     connect(timer, &QTimer::timeout, job, [advance] { (*advance)(); });
+    auto ready = std::make_shared<std::function<void()>>();
+    *ready = [state, player, timer, advance, job] {
+      const bool audioDone = !player->hasAudio() || state->audioEnd >= state->target + 150;
+      if (state->advancing || !state->image || !audioDone) return;
+      state->advancing = true;
+      timer->stop();
+      // Queued: never re-seek from inside a decoder callback.
+      QMetaObject::invokeMethod(job, [advance] { (*advance)(); }, Qt::QueuedConnection);
+    };
     connect(sink, &QVideoSink::videoFrameChanged, job,
-            [this, state, generation, count](const QVideoFrame &frame) {
+            [this, state, generation, count, ready](const QVideoFrame &frame) {
               if (state->index < 0 || state->index >= count || state->image ||
                   !frame.isValid())
                 return;
@@ -170,20 +189,18 @@ void TimelineMedia::setSource(QUrl source, double duration) {
               if (image.isNull())
                 return;
               state->image = true;
+              // Stored now, shown with the single revision change at the end.
               QMetaObject::invokeMethod(
                   this, [this, generation, index = state->index, image] {
                     if (generation != m_generation)
                       return;
-                    {
-                      QMutexLocker lock(&m_cache->mutex);
-                      m_cache->images[index] = image;
-                    }
-                    ++m_revision;
-                    emit changed();
+                    QMutexLocker lock(&m_cache->mutex);
+                    m_cache->images[index] = image;
                   });
+              (*ready)();
             });
     connect(audio, &QAudioBufferOutput::audioBufferReceived, job,
-            [state](const QAudioBuffer &buffer) {
+            [state, ready](const QAudioBuffer &buffer) {
               if (state->index < 0 || !buffer.isValid() ||
                   buffer.startTime() / 1000 < state->target - 100)
                 return;
@@ -209,6 +226,8 @@ void TimelineMedia::setSource(QUrl source, double duration) {
                 state->peak =
                     std::max(state->peak, std::min(1.0, std::abs(sample)));
               }
+              state->audioEnd = std::max(state->audioEnd, (buffer.startTime() + buffer.duration()) / 1000);
+              (*ready)();
             });
     connect(player, &QMediaPlayer::mediaStatusChanged, job,
             [advance, state](QMediaPlayer::MediaStatus status) {
@@ -219,6 +238,8 @@ void TimelineMedia::setSource(QUrl source, double duration) {
       QMetaObject::invokeMethod(this, [this, generation] {
         if (generation == m_generation) {
           m_busy = false;
+          m_progress = 1;
+          emit progressChanged();
           emit changed();
         }
       });

@@ -11,6 +11,9 @@ class TimelineMedia final : public QObject {
   Q_PROPERTY(int revision READ revision NOTIFY changed)
   Q_PROPERTY(bool busy READ busy NOTIFY changed)
   Q_PROPERTY(QVariantList waveform READ waveform NOTIFY changed)
+  // Fraction of thumbnail/peak samples decoded for the current source. Results
+  // are published together (one revision change) when busy turns false.
+  Q_PROPERTY(double progress READ progress NOTIFY progressChanged)
 public:
   explicit TimelineMedia(QObject *parent = nullptr);
   ~TimelineMedia() override;
@@ -23,9 +26,11 @@ public:
   int thumbnailCount() const;
   int revision() const { return m_revision; }
   bool busy() const { return m_busy; }
+  double progress() const { return m_progress; }
   QVariantList waveform() const { return m_waveform; }
 signals:
   void changed();
+  void progressChanged();
 
 private:
   std::shared_ptr<TimelineCache> m_cache;
@@ -35,5 +40,7 @@ private:
   double m_duration = 0;
   int m_revision = 0, m_generation = 0, m_sampleCount = 6;
   bool m_busy = false;
+  double m_progress = 0;
+  QVariantList m_pendingWaveform;
   QVariantList m_waveform;
 };

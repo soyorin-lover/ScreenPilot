@@ -153,9 +153,13 @@ Item {
                     radius: 10
                     gradient: Gradient { GradientStop { position: 0; color: StudioTheme.clipTop } GradientStop { position: 1; color: StudioTheme.clipBottom } }
                     opacity: strip.draggedIndex === index ? .72 : 1
+                    // Thumbnails and waveform appear together once the whole
+                    // source is sampled; partial results would reload and flicker.
                     Item {
                         x: 3; y: 3; width: parent.width - 6; height: parent.height - clipItem.waveHeight - 6
                         clip: true
+                        opacity: timelineMedia.busy ? 0 : 1
+                        Behavior on opacity { NumberAnimation { duration: 160 } }
                         Row {
                             Repeater {
                                 model: clipItem.frames
@@ -164,7 +168,8 @@ Item {
                                     width: (clipItem.width - 6) / clipItem.frames + .5; height: clipItem.height - clipItem.waveHeight - 6
                                     fillMode: Image.PreserveAspectCrop
                                     cache: false
-                                    asynchronous: true
+                                    // In-memory provider: synchronous keeps every frame in one paint.
+                                    asynchronous: false
                                     source: { const revision = timelineMedia.revision; return timelineMedia.thumbnail(clipItem.modelData.sourceStart + clipItem.modelData.sourceDuration * (index + .5) / clipItem.frames) }
                                 }
                             }
@@ -173,6 +178,8 @@ Item {
                     Canvas {
                         id: wave
                         x: 6; y: parent.height - clipItem.waveHeight - 1; width: parent.width - 12; height: clipItem.waveHeight - 2
+                        opacity: timelineMedia.busy ? 0 : 1
+                        Behavior on opacity { NumberAnimation { duration: 160 } }
                         Connections { target: timelineMedia; function onChanged() { wave.requestPaint() } }
                         onWidthChanged: requestPaint()
                         onPaint: {
@@ -181,6 +188,29 @@ Item {
                                 const amplitude = timelineMedia.amplitude(clipItem.modelData.sourceStart + clipItem.modelData.sourceDuration * x / width)
                                 const a = Math.max(.06, Math.min(1, Math.sqrt(amplitude) * 1.6))
                                 ctx.fillRect(x, height / 2 - a * height / 2, 2, Math.max(1, a * height))
+                            }
+                        }
+                    }
+                    Column {
+                        objectName: "timelineLoading-" + clipItem.index
+                        visible: timelineMedia.busy
+                        anchors.centerIn: parent
+                        spacing: 6
+                        Text {
+                            visible: clipItem.width > 110
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "正在加载预览…"
+                            color: StudioTheme.muted
+                            font.family: StudioTheme.fontFamily; font.pixelSize: StudioTheme.caption
+                        }
+                        Rectangle {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: Math.min(160, clipItem.width - 24); height: 3; radius: 1.5
+                            color: StudioTheme.well
+                            Rectangle {
+                                width: parent.width * timelineMedia.progress; height: parent.height; radius: parent.radius
+                                color: StudioTheme.muted
+                                Behavior on width { NumberAnimation { duration: 120 } }
                             }
                         }
                     }
