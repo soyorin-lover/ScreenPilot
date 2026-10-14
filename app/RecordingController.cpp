@@ -16,6 +16,7 @@
 #include <QMediaRecorder>
 #include <QQueue>
 #include <QScreen>
+#include <QtGui/qscreen_platform.h>
 #include <QScreenCapture>
 #include <QSettings>
 #include <QStandardPaths>
@@ -879,15 +880,16 @@ void RecordingController::samplePointer() {
   if (target.isScreen && target.screen) {
     // QScreen geometry is logical; matching display settings give physical
     // bounds without multiplying mixed-DPI desktop origins by one DPR.
-    DEVMODEW mode{};
-    mode.dmSize = sizeof(mode);
-    const QString name = target.screen->name();
-    if (EnumDisplaySettingsW(reinterpret_cast<LPCWSTR>(name.utf16()),
-                             ENUM_CURRENT_SETTINGS, &mode)) {
-      bounds = {mode.dmPosition.x, mode.dmPosition.y,
-                mode.dmPosition.x + static_cast<LONG>(mode.dmPelsWidth),
-                mode.dmPosition.y + static_cast<LONG>(mode.dmPelsHeight)};
-      valid = true;
+    // QScreen::name() is the monitor model ("G24MiQ"), not a GDI device name,
+    // so resolve the monitor handle instead. The process is per-monitor DPI
+    // aware: rcMonitor is in the same physical space as GetCursorPos.
+    if (auto *native = target.screen->nativeInterface<QNativeInterface::QWindowsScreen>()) {
+      MONITORINFO info{};
+      info.cbSize = sizeof(info);
+      if (GetMonitorInfoW(native->handle(), &info)) {
+        bounds = info.rcMonitor;
+        valid = true;
+      }
     }
   } else if (!target.isScreen) {
     // Refresh each tick to follow movement. GetWindowRect includes non-client

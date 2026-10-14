@@ -124,10 +124,17 @@ int runRecordingBarSmokeTest(QGuiApplication &app, AppRuntime &runtime, const QS
       report["takes"] = takes;
       report["savedMarkers"] = int(recorder.lastRecordingMarkers().size());
       report["saved"] = !recorder.lastRecording().isEmpty();
+      // Pointer samples must map into the captured area; a screen take used to
+      // mark every sample outside (no clicks for auto zoom).
+      int inside = 0;
+      for (const auto &sample : recorder.lastPointerSamples()) inside += sample.toMap().value("inside").toBool();
+      report["pointerSamples"] = int(recorder.lastPointerSamples().size());
+      report["pointerInsideSamples"] = inside;
       const bool ok = report["mainHiddenAtStart"].toBool() && report["barShownAtStart"].toBool() &&
           report["captureExcluded"].toBool() && report["markersAfterClick"].toInt() == 1 &&
           report["restartedWithoutMain"].toBool() && !mainShownDuringTake &&
-          report["savedMarkers"].toInt() == 1 && report["saved"].toBool();
+          report["savedMarkers"].toInt() == 1 && report["saved"].toBool() &&
+          (!report["screenTake"].toBool() || report["pointerInsideSamples"].toInt() > 0);
       finish(ok ? QString() : QStringLiteral("Recording bar flow check failed"));
     }
   });
