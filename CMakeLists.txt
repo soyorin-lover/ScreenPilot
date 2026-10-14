@@ -139,7 +139,10 @@ qt_add_qml_module(screenpilot_core
         app/StudioNumberField.qml app/EffectItemList.qml app/EffectLane.qml app/RegionBox.qml app/RegionPicker.qml app/InspectorClip.qml app/InspectorAudio.qml app/InspectorScreen3D.qml app/InspectorFocus.qml app/InspectorStickers.qml app/CameraMotionControls.qml app/SettingsDialog.qml app/RecoveryPanel.qml app/RecordingBar.qml
 )
 
-qt_add_executable(ScreenPilot WIN32 app/main.cpp)
+# Icon and version resource for the product executable.
+set(SCREENPILOT_ICON "${CMAKE_CURRENT_SOURCE_DIR}/app/resources/screenpilot.ico")
+configure_file(app/resources/screenpilot.rc.in "${CMAKE_CURRENT_BINARY_DIR}/screenpilot.rc" @ONLY)
+qt_add_executable(ScreenPilot WIN32 app/main.cpp "${CMAKE_CURRENT_BINARY_DIR}/screenpilot.rc")
 target_link_libraries(ScreenPilot PRIVATE screenpilot_core screenpilot_coreplugin)
 
 # Smoke tests, probes and benchmarks (--*-test, --*-benchmark). Not shipped.
