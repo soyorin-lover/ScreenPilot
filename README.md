@@ -51,19 +51,33 @@
 - Windows 11 x64（Windows 10 2004 及以上应该也能用，但没有测试过）
 - 录制浮条和备忘录"不被录进视频"依赖 Windows 10 2004 引入的窗口捕获排除
 
-## 构建
+## 获取与运行
 
-需要：
+**仓库里没有现成的 exe，需要自己编译一次。** 编译好的程序是一个文件夹，不是单个 exe。
+
+### 1. 准备环境
 
 - Qt 6.8（MSVC 2022 64-bit 版本，包含 Qt Multimedia）
 - Visual Studio 2022 或更新版本（MSVC，C++20）
 - CMake 3.24+ 和 Ninja
 
+### 2. 编译
+
+在仓库根目录的 PowerShell 里运行（`-QtRoot` 换成你自己的 Qt 安装路径）：
+
 ```powershell
 .\scripts\build-windows.ps1 -QtRoot 'C:\Qt\6.8.3\msvc2022_64' -Deploy
 ```
 
-构建完成后，双击 `启动 ScreenPilot.cmd`，或直接运行 `build\desktop\portable\ScreenPilot.exe`。更多说明（目录结构、测试程序、性能基准）见 [docs/building.md](docs/building.md)。
+### 3. 运行
+
+编译完成后，**程序在 `build\desktop\portable\` 文件夹里，双击其中的 `ScreenPilot.exe` 即可**，也可以双击仓库根目录的 `启动 ScreenPilot.cmd`。
+
+- `portable` 文件夹里包含运行所需的全部文件，可以把**整个文件夹**拷到任意位置使用；只拷 exe 是运行不了的
+- 想直接输出到别的位置，加上 `-DeploymentDirectory`，例如 `-DeploymentDirectory 'D:\Apps\ScreenPilot'`
+- 想放到桌面：在 `ScreenPilot.exe` 上右键 →（Windows 11 先点"显示更多选项"）发送到 → 桌面快捷方式
+
+更多说明（目录结构、测试程序、性能基准）见 [docs/building.md](docs/building.md)。
 
 ## 性能现状
 
