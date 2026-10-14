@@ -1089,5 +1089,7 @@ bool RecordingController::addRecordingMarker() {
 }
 
 bool RecordingController::excludeFromCapture(QWindow *window) {
+  // Demo footage of the app itself needs the bar on screen.
+  if (qEnvironmentVariable("SCREENPILOT_DEMO") == "actor") return false;
   return excludeWindowFromCapture(window);
 }
